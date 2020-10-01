@@ -23,6 +23,7 @@ export class GoProperty implements GoTypeMember {
   public readonly name: string;
   public readonly getter: string;
   public readonly reference?: GoTypeRef;
+  public readonly immutable: boolean;
 
   public constructor(
     public parent: GoStruct,
@@ -30,6 +31,7 @@ export class GoProperty implements GoTypeMember {
   ) {
     this.name = toPascalCase(this.property.name);
     this.getter = `Get${this.name}`;
+    this.immutable = property.immutable;
 
     if (property.type) {
       this.reference = new GoTypeRef(parent.pkg.root, property.type);
@@ -65,7 +67,7 @@ export class GoProperty implements GoTypeMember {
 
   public emitSetterDecl(context: EmitContext) {
     const { code } = context;
-    if (!this.property.protected) {
+    if (!this.property.protected && !this.immutable) {
       code.line(`Set${this.name}(val ${this.returnType})`);
     }
   }

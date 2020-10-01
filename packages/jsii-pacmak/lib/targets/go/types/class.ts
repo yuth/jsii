@@ -77,7 +77,9 @@ export class GoClass extends GoStruct {
   private emitSetters(context: EmitContext): void {
     if (this.properties.length !== 0) {
       for (const property of this.properties) {
-        property.emitSetterImpl(context);
+        if (!property.immutable) {
+          property.emitSetterImpl(context);
+        }
       }
     }
   }
