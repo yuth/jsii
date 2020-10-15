@@ -1,6 +1,7 @@
+import { toPascalCase } from 'codemaker';
 import { Method, ClassType, Initializer } from 'jsii-reflect';
 import { GoStruct } from './go-type';
-import { GoParameter, GoMethod } from './type-member';
+import { GoParameter, GoMethod, GoProperty } from './type-member';
 import { getFieldDependencies } from '../util';
 import { Package } from '../package';
 import { ClassConstructor, MethodCall } from '../runtime';
@@ -12,6 +13,7 @@ import { EmitContext } from '../emit-context';
 export class GoClass extends GoStruct {
   public readonly methods: ClassMethod[] = [];
   public readonly staticMethods: StaticMethod[] = [];
+  // public readonly staticProperties: StaticProperty[] = [];
 
   private readonly initializer?: GoClassConstructor;
 
@@ -45,6 +47,12 @@ export class GoClass extends GoStruct {
       method.emit(context);
     }
 
+    for (const prop of this.properties) {
+      if (prop.static) {
+        this.emitStaticProperty(context, prop);
+      }
+    }
+
     for (const method of this.methods) {
       method.emit(context);
     }
@@ -61,8 +69,10 @@ export class GoClass extends GoStruct {
     }
 
     for (const property of this.properties) {
-      property.emitGetterDecl(context);
-      property.emitSetterDecl(context);
+      if (!property.static) {
+        property.emitGetterDecl(context);
+        property.emitSetterDecl(context);
+      }
     }
 
     for (const method of this.methods) {
@@ -73,13 +83,26 @@ export class GoClass extends GoStruct {
     code.line();
   }
 
-  // emits the implementation of the getters for the struct
+  private emitStaticProperty({ code }: EmitContext, prop: GoProperty): void {
+    const propertyName = toPascalCase(prop.name);
+    const name = `${this.name}_${propertyName}`;
+    code.openBlock(`func ${name}() ${prop.returnType}`);
+
+    // TODO placeholder - replace with StaticGet request
+    code.openBlock(`_jsii_.NoOpRequest(_jsii_.NoOpApiRequest`);
+    code.line(`Class: "${this.name}",`);
+    code.line(`Method: "${prop.property.name}",`);
+    code.close(`})`);
+
+    code.closeBlock();
+    code.line();
+  }
+
+  // emits the implementation of the setters for the struct
   private emitSetters(context: EmitContext): void {
     if (this.properties.length !== 0) {
       for (const property of this.properties) {
-        if (!property.immutable) {
-          property.emitSetterImpl(context);
-        }
+        property.emitSetterImpl(context);
       }
     }
   }

@@ -2425,10 +2425,6 @@ func (c *ClassThatImplementsThePrivateInterface) SetE(val string) {
 
 // Class interface
 type ClassWithCollectionsIface interface {
-	GetStaticArray() []string
-	SetStaticArray(val []string)
-	GetStaticMap() map[string]string
-	SetStaticMap(val map[string]string)
 	GetArray() []string
 	SetArray(val []string)
 	GetMap() map[string]string
@@ -2511,6 +2507,20 @@ func ClassWithCollections_CreateAMap() map[string]string {
 		Args: []string{},
 	})
 	return nil
+}
+
+func ClassWithCollections_StaticArray() []string {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "ClassWithCollections",
+		Method: "staticArray",
+	})
+}
+
+func ClassWithCollections_StaticMap() map[string]string {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "ClassWithCollections",
+		Method: "staticMap",
+	})
 }
 
 // Class interface
@@ -3375,8 +3385,6 @@ func (d *DiamondInheritanceTopLevelStruct) GetTopLevelProperty() string {
 
 // Class interface
 type DisappointingCollectionSourceIface interface {
-	GetMaybeList() []string
-	GetMaybeMap() map[string]float64
 }
 
 // Verifies that null/undefined can be returned for optional collections.
@@ -3404,6 +3412,20 @@ func (d *DisappointingCollectionSource) GetMaybeMap() map[string]float64 {
 	return d.MaybeMap
 }
 
+
+func DisappointingCollectionSource_MaybeList() []string {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "DisappointingCollectionSource",
+		Method: "maybeList",
+	})
+}
+
+func DisappointingCollectionSource_MaybeMap() map[string]float64 {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "DisappointingCollectionSource",
+		Method: "maybeMap",
+	})
+}
 
 // Class interface
 type DoNotOverridePrivatesIface interface {
@@ -5462,7 +5484,6 @@ func NewJsii496Derived() Jsii496DerivedIface {
 
 // Class interface
 type JsiiAgentIface interface {
-	GetValue() string
 }
 
 // Host runtime version should be set via JSII_AGENT.
@@ -5489,6 +5510,13 @@ func NewJsiiAgent() JsiiAgentIface {
 		&self,
 	)
 	return &self
+}
+
+func JsiiAgent_Value() string {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "JsiiAgent",
+		Method: "value",
+	})
 }
 
 // Class interface
@@ -7570,8 +7598,6 @@ func (s *StableStruct) GetReadonlyProperty() string {
 
 // Class interface
 type StaticContextIface interface {
-	GetStaticVariable() bool
-	SetStaticVariable(val bool)
 }
 
 // This is used to validate the ability to use \`this\` from within a static context.
@@ -7603,16 +7629,15 @@ func StaticContext_CanAccessStaticContext() bool {
 	return true
 }
 
+func StaticContext_StaticVariable() bool {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "StaticContext",
+		Method: "staticVariable",
+	})
+}
+
 // Class interface
 type StaticsIface interface {
-	GetBar() float64
-	GetConstObj() DoubleTrouble
-	GetFoo() string
-	GetZooBar() map[string]string
-	GetInstance() Statics
-	SetInstance(val Statics)
-	GetNonConstStatic() float64
-	SetNonConstStatic(val float64)
 	GetValue() string
 	JustMethod() string
 }
@@ -7700,6 +7725,48 @@ func Statics_StaticMethod(name string) string {
 		Args: []string{"string",},
 	})
 	return "NOOP_RETURN_STRING"
+}
+
+func Statics_Bar() float64 {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "Statics",
+		Method: "BAR",
+	})
+}
+
+func Statics_ConstObj() DoubleTrouble {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "Statics",
+		Method: "ConstObj",
+	})
+}
+
+func Statics_Foo() string {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "Statics",
+		Method: "Foo",
+	})
+}
+
+func Statics_ZooBar() map[string]string {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "Statics",
+		Method: "zooBar",
+	})
+}
+
+func Statics_Instance() Statics {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "Statics",
+		Method: "instance",
+	})
+}
+
+func Statics_NonConstStatic() float64 {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "Statics",
+		Method: "nonConstStatic",
+	})
 }
 
 func (s *Statics) JustMethod() string {
@@ -8498,7 +8565,6 @@ func (u *UnionProperties) GetFoo() _jsii_.Any {
 // Class interface
 type UpcasingReflectableIface interface {
 	submodule.IReflectable
-	GetReflector() submodule.Reflector
 	GetEntries() []submodule.ReflectableEntry
 }
 
@@ -8530,6 +8596,13 @@ func NewUpcasingReflectable(delegate map[string]_jsii_.Any) UpcasingReflectableI
 		&self,
 	)
 	return &self
+}
+
+func UpcasingReflectable_Reflector() submodule.Reflector {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "UpcasingReflectable",
+		Method: "reflector",
+	})
 }
 
 // Class interface
@@ -9016,7 +9089,6 @@ const (
 
 // Class interface
 type InnerClassIface interface {
-	GetStaticProp() SomeStruct
 }
 
 // Struct proxy
@@ -9041,6 +9113,13 @@ func NewInnerClass() InnerClassIface {
 		&self,
 	)
 	return &self
+}
+
+func InnerClass_StaticProp() SomeStruct {
+	_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {
+		Class: "InnerClass",
+		Method: "staticProp",
+	})
 }
 
 // KwargsPropsIface is the public interface for the custom type KwargsProps

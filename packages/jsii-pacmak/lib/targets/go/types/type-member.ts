@@ -38,6 +38,10 @@ export class GoProperty implements GoTypeMember {
     }
   }
 
+  public get static(): boolean {
+    return !!this.property.static;
+  }
+
   public get returnType(): string {
     return (
       this.reference?.scopedName(this.parent.pkg) ??
@@ -98,25 +102,27 @@ export class GoProperty implements GoTypeMember {
   }
 
   public emitSetterImpl(context: EmitContext) {
-    const { code } = context;
-    const receiver = this.parent.name;
-    const instanceArg = receiver.substring(0, 1).toLowerCase();
+    if (!this.immutable) {
+      const { code } = context;
+      const receiver = this.parent.name;
+      const instanceArg = receiver.substring(0, 1).toLowerCase();
 
-    code.openBlock(
-      `func (${instanceArg} *${receiver}) Set${this.name}(val ${this.returnType})`,
-    );
+      code.openBlock(
+        `func (${instanceArg} *${receiver}) Set${this.name}(val ${this.returnType})`,
+      );
 
-    if (this.property.static) {
-      emitInitialization(code);
+      if (this.property.static) {
+        emitInitialization(code);
+      }
+
+      if (this.parent.name === this.returnType) {
+        code.line(`${instanceArg}.${this.name} = &val`);
+      } else {
+        code.line(`${instanceArg}.${this.name} = val`);
+      }
+      code.closeBlock();
+      code.line();
     }
-
-    if (this.parent.name === this.returnType) {
-      code.line(`${instanceArg}.${this.name} = &val`);
-    } else {
-      code.line(`${instanceArg}.${this.name} = val`);
-    }
-    code.closeBlock();
-    code.line();
   }
 }
 

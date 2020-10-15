@@ -27,7 +27,7 @@ export class MethodCall {
     }
 
     const name = code.toPascalCase(this.parent.name);
-    code.open(`_jsii_.NoOpRequest(_jsii_.NoOpApiRequest {`);
+    code.openBlock(`_jsii_.NoOpRequest(_jsii_.NoOpApiRequest`);
     code.line(`Class: "${this.parent.parent.name}",`);
     code.line(`Method: "${name}",`);
     code.line(
