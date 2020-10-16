@@ -4,7 +4,7 @@ import { ClassType, InterfaceType, Type } from 'jsii-reflect';
 import { Package } from '../package';
 import { GoTypeRef } from './go-type-reference';
 import { GoProperty } from './type-member';
-import { getFieldDependencies } from '../util';
+import { getMemberDependencies } from '../util';
 
 // String appended to all go GoStruct Interfaces
 const STRUCT_INTERFACE_SUFFIX = 'Iface';
@@ -120,7 +120,7 @@ export abstract class GoStruct extends GoType {
   public get dependencies(): Package[] {
     return [
       ...this.extendsDependencies,
-      ...getFieldDependencies(this.properties),
+      ...getMemberDependencies(this.properties),
     ];
   }
 }

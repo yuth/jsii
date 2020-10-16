@@ -159,6 +159,7 @@ export abstract class GoMethod implements GoTypeMember {
 export class GoParameter {
   public readonly name: string;
   public readonly reference: GoTypeRef;
+
   public constructor(
     public parent: GoClass | Interface,
     public readonly parameter: Parameter,
@@ -166,10 +167,9 @@ export class GoParameter {
     this.name = substituteReservedWords(parameter.name);
     this.reference = new GoTypeRef(parent.pkg.root, parameter.type);
   }
+
   public toString(): string {
     const paramType = this.reference.scopedName(this.parent.pkg);
     return `${this.name} ${paramType}`;
   }
-
-  // return parameters.length === 0 ? '' : parameters.join(', ');
 }

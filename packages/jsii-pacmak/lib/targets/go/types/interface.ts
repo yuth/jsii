@@ -5,7 +5,7 @@ import { GoType } from './go-type';
 import { GoTypeRef } from './go-type-reference';
 import { Package } from '../package';
 import { GoMethod, GoTypeMember } from './type-member';
-import { getFieldDependencies } from '../util';
+import { getMemberDependencies, getParamDependencies } from '../util';
 
 export class Interface extends GoType {
   public readonly methods: InterfaceMethod[];
@@ -65,8 +65,9 @@ export class Interface extends GoType {
   public get dependencies(): Package[] {
     return [
       ...this.extendsDependencies,
-      ...getFieldDependencies(this.methods),
-      ...getFieldDependencies(this.properties),
+      ...getMemberDependencies(this.methods),
+      ...getParamDependencies(this.methods),
+      ...getMemberDependencies(this.properties),
     ];
   }
 }

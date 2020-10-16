@@ -1,7 +1,7 @@
 import { Method, ClassType, Initializer } from 'jsii-reflect';
 import { GoStruct } from './go-type';
 import { GoParameter, GoMethod } from './type-member';
-import { getFieldDependencies } from '../util';
+import { getMemberDependencies, getParamDependencies } from '../util';
 import { Package } from '../package';
 import { ClassConstructor, MethodCall } from '../runtime';
 import { EmitContext } from '../emit-context';
@@ -84,7 +84,11 @@ export class GoClass extends GoStruct {
 
   public get dependencies(): Package[] {
     // need to add dependencies of method arguments and constructor arguments
-    return [...super.dependencies, ...getFieldDependencies(this.methods)];
+    return [
+      ...super.dependencies,
+      ...getMemberDependencies(this.methods),
+      ...getParamDependencies(this.methods),
+    ];
   }
 
   /*
