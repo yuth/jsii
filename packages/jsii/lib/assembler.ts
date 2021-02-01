@@ -189,12 +189,12 @@ export class Assembler implements Emitter {
     ) {
       LOG.debug('Skipping emit due to errors.');
       // Clearing ``this._types`` to allow contents to be garbage-collected.
-      delete this._types;
+      this._types = {};
       try {
         return { diagnostics: this._diagnostics, emitSkipped: true };
       } finally {
         // Clearing ``this._diagnostics`` to allow contents to be garbage-collected.
-        delete this._diagnostics;
+        this._diagnostics = [];
       }
     }
 
@@ -255,10 +255,10 @@ export class Assembler implements Emitter {
       };
     } finally {
       // Clearing ``this._types`` to allow contents to be garbage-collected.
-      delete this._types;
+      this._types = {};
 
       // Clearing ``this._diagnostics`` to allow contents to be garbage-collected.
-      delete this._diagnostics;
+      this._diagnostics = [];
     }
 
     async function _loadReadme(this: Assembler) {
@@ -2305,7 +2305,7 @@ export class Assembler implements Emitter {
     declaration: ts.Node,
     purpose: TypeUseKind,
   ): Promise<spec.OptionalValue> {
-    const isThisType = _isThisType(type, this._typeChecker);
+    const isThisType = _isThisType(type, declaration, this._typeChecker);
 
     if (type.isLiteral() && _isEnumLike(type)) {
       type = this._typeChecker.getBaseTypeOfLiteralType(type);
@@ -2706,7 +2706,7 @@ interface SubmoduleSpec {
 }
 
 function _fingerprint(assembly: spec.Assembly): spec.Assembly {
-  delete assembly.fingerprint;
+  delete (assembly as any).fingerprint;
   assembly = sortJson(assembly);
   const fingerprint = crypto
     .createHash('sha256')
@@ -3177,13 +3177,23 @@ function paramDocs(
 /**
  * Checks is the provided type is "this" (as a type annotation).
  *
- * @param type        the validated type.
- * @param typeChecker the type checker.
+ * @param type                  the validated type.
+ * @param enclosingDeclaration  the declaration that bears the type.
+ * @param typeChecker           the type checker.
  *
  * @returns `true` iif the type is `this`
  */
-function _isThisType(type: ts.Type, typeChecker: ts.TypeChecker): boolean {
-  return typeChecker.typeToTypeNode(type)?.kind === ts.SyntaxKind.ThisKeyword;
+function _isThisType(
+  type: ts.Type,
+  enclosingDeclaration: ts.Node,
+  typeChecker: ts.TypeChecker,
+): boolean {
+  const typeNode = typeChecker.typeToTypeNode(
+    type,
+    enclosingDeclaration,
+    ts.NodeBuilderFlags.NoTypeReduction,
+  );
+  return typeNode != null && ts.isThisTypeNode(typeNode);
 }
 
 /**

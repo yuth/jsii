@@ -87,7 +87,7 @@ export const STANDARD_COMPILER_OPTIONS: ts.CompilerOptions = {
   experimentalDecorators: true,
   inlineSourceMap: true,
   inlineSources: true,
-  lib: ['lib.es2016.d.ts', 'lib.es2017.object.d.ts', 'lib.es2017.string.d.ts'],
+  lib: ['lib.es2020.d.ts'],
   module: ts.ModuleKind.CommonJS,
   noEmitOnError: true,
   noFallthroughCasesInSwitch: true,
@@ -101,7 +101,7 @@ export const STANDARD_COMPILER_OPTIONS: ts.CompilerOptions = {
   strictNullChecks: true,
   strictPropertyInitialization: true,
   stripInternal: true,
-  target: ts.ScriptTarget.ES2018,
+  target: ts.ScriptTarget.ES2020,
   // Incremental builds
   incremental: true,
   tsBuildInfoFile: '.tsbuildinfo',

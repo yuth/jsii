@@ -20,8 +20,8 @@ export class Kernel {
 
   private assemblies: { [name: string]: Assembly } = {};
   private readonly objects = new ObjectTable(this._typeInfoForFqn.bind(this));
-  private cbs: { [cbid: string]: Callback } = {};
-  private waiting: { [cbid: string]: Callback } = {};
+  private readonly cbs = new Map<string, Callback>();
+  private readonly waiting = new Map<string, Callback>();
   private promises: { [prid: string]: AsyncInvocation } = {};
   private nextid = 20000; // incrementing counter for objid, cbid, promiseid
   private syncInProgress?: string; // forbids async calls (begin) while processing sync calls (get/set/invoke)
@@ -171,8 +171,8 @@ export class Kernel {
       );
 
       return {
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: Buffer.from(result.stdout),
+        stderr: Buffer.from(result.stderr),
         status: result.status,
         signal: result.signal,
       };
@@ -407,9 +407,8 @@ export class Kernel {
 
   public callbacks(_req?: api.CallbacksRequest): api.CallbacksResponse {
     this._debug('callbacks');
-    const ret = Object.keys(this.cbs).map((cbid) => {
-      const cb = this.cbs[cbid];
-      this.waiting[cbid] = cb; // move to waiting
+    const ret = Array.from(this.cbs.entries()).map(([cbid, cb]) => {
+      this.waiting.set(cbid, cb); // move to waiting
       const callback: api.Callback = {
         cbid,
         cookie: cb.override.cookie,
@@ -423,7 +422,7 @@ export class Kernel {
     });
 
     // move all callbacks to the wait queue and clean the callback queue.
-    this.cbs = {};
+    this.cbs.clear();
     return { callbacks: ret };
   }
 
@@ -432,11 +431,11 @@ export class Kernel {
 
     this._debug('complete', cbid, err, result);
 
-    if (!(cbid in this.waiting)) {
+    const cb = this.waiting.get(cbid);
+    if (cb == null) {
       throw new Error(`Callback ${cbid} not found`);
     }
 
-    const cb = this.waiting[cbid];
     if (err) {
       this._debug('completed with error:', err);
       cb.fail(new Error(err));
@@ -449,7 +448,7 @@ export class Kernel {
       cb.succeed(sandoxResult);
     }
 
-    delete this.waiting[cbid];
+    this.waiting.delete(cbid);
 
     return { cbid };
   }
@@ -785,14 +784,14 @@ export class Kernel {
           return new Promise<any>((succeed, fail) => {
             const cbid = this._makecbid();
             this._debug('adding callback to queue', cbid);
-            this.cbs[cbid] = {
+            this.cbs.set(cbid, {
               objref,
               override,
               args,
               expectedReturnType: methodInfo.returns ?? 'void',
               succeed,
               fail,
-            };
+            });
           });
         },
       });
