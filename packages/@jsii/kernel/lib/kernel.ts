@@ -8,7 +8,7 @@ import * as vm from 'vm';
 
 import * as api from './api';
 import { TOKEN_REF } from './api';
-import { ObjectTable, tagJsiiConstructor } from './objects';
+import { ObjectStore } from './object-store';
 import * as onExit from './on-exit';
 import * as wire from './serialization';
 
@@ -19,11 +19,11 @@ export class Kernel {
   public traceEnabled = false;
 
   private assemblies: { [name: string]: Assembly } = {};
-  private readonly objects = new ObjectTable(this._typeInfoForFqn.bind(this));
+  private readonly objects = new ObjectStore(this._typeInfoForFqn.bind(this));
   private readonly cbs = new Map<string, Callback>();
   private readonly waiting = new Map<string, Callback>();
   private promises: { [prid: string]: AsyncInvocation } = {};
-  private nextid = 20000; // incrementing counter for objid, cbid, promiseid
+  private nextid = 20000; // incrementing counter for cbid, promiseid
   private syncInProgress?: string; // forbids async calls (begin) while processing sync calls (get/set/invoke)
   private installDir?: string;
 
@@ -188,7 +188,7 @@ export class Kernel {
     const { objref } = req;
 
     this._debug('del', objref);
-    this.objects.deleteObject(objref);
+    this.objects.releaseRef(objref);
 
     return {};
   }
@@ -243,7 +243,9 @@ export class Kernel {
   public get(req: api.GetRequest): api.GetResponse {
     const { objref, property } = req;
     this._debug('get', objref, property);
-    const { instance, fqn, interfaces } = this.objects.findObject(objref);
+    const { instance, classFQN: fqn, interfaces } = this.objects.derefObject(
+      objref,
+    );
     const ti = this._typeInfoForProperty(property, fqn, interfaces);
 
     // if the property is overridden by the native code and "get" is called on the object, it
@@ -268,7 +270,9 @@ export class Kernel {
   public set(req: api.SetRequest): api.SetResponse {
     const { objref, property, value } = req;
     this._debug('set', objref, property, value);
-    const { instance, fqn, interfaces } = this.objects.findObject(objref);
+    const { instance, classFQN: fqn, interfaces } = this.objects.derefObject(
+      objref,
+    );
 
     const propInfo = this._typeInfoForProperty(req.property, fqn, interfaces);
 
@@ -473,7 +477,7 @@ export class Kernel {
 
   public stats(_req?: api.StatsRequest): api.StatsResponse {
     return {
-      objectCount: this.objects.count,
+      objectCount: this.objects.retainedObjectCount,
     };
   }
 
@@ -490,7 +494,7 @@ export class Kernel {
         case spec.TypeKind.Class:
         case spec.TypeKind.Enum:
           const constructor = this._findSymbol(fqn);
-          tagJsiiConstructor(constructor, fqn);
+          this.objects.registerType(constructor, fqn);
       }
     }
   }
@@ -546,11 +550,16 @@ export class Kernel {
 
     const ctorResult = this._findCtor(fqn, requestArgs);
     const ctor = ctorResult.ctor;
-    const obj = this._wrapSandboxCode(
-      () =>
-        new ctor(...this._toSandboxValues(requestArgs, ctorResult.parameters)),
-    );
-    const objref = this.objects.registerObject(obj, fqn, req.interfaces ?? []);
+    const { objRef: objref, instance: obj } = this.objects.register({
+      classFQN: fqn,
+      instance: this._wrapSandboxCode(
+        () =>
+          new ctor(
+            ...this._toSandboxValues(requestArgs, ctorResult.parameters),
+          ),
+      ),
+      interfaceFQNs: req.interfaces ?? [],
+    });
 
     // overrides: for each one of the override method names, installs a
     // method on the newly created object which represents the remote "reverse proxy".
@@ -832,7 +841,9 @@ export class Kernel {
     methodName: string,
     args: any[],
   ) {
-    const { instance, fqn, interfaces } = this.objects.findObject(objref);
+    const { instance, classFQN: fqn, interfaces } = this.objects.derefObject(
+      objref,
+    );
     const ti = this._typeInfoForMethod(methodName, fqn, interfaces);
     this._validateMethodArguments(ti, args);
 
@@ -943,7 +954,7 @@ export class Kernel {
   private _typeInfoForMethod(
     methodName: string,
     fqn: string,
-    interfaces?: string[],
+    interfaces?: readonly string[],
   ): spec.Method {
     const ti = this._tryTypeInfoForMethod(methodName, fqn, interfaces);
     if (!ti) {
@@ -961,7 +972,7 @@ export class Kernel {
   private _tryTypeInfoForMethod(
     methodName: string,
     classFqn: string,
-    interfaces: string[] = [],
+    interfaces: readonly string[] = [],
   ): spec.Method | undefined {
     for (const fqn of [classFqn, ...interfaces]) {
       if (fqn === 'Object') {
@@ -1001,7 +1012,7 @@ export class Kernel {
   private _tryTypeInfoForProperty(
     property: string,
     classFqn: string,
-    interfaces: string[] = [],
+    interfaces: readonly string[] = [],
   ): spec.Property | undefined {
     for (const fqn of [classFqn, ...interfaces]) {
       if (fqn === wire.EMPTY_OBJECT_FQN) {
@@ -1047,7 +1058,7 @@ export class Kernel {
   private _typeInfoForProperty(
     property: string,
     fqn: string,
-    interfaces?: string[],
+    interfaces?: readonly string[],
   ): spec.Property {
     const typeInfo = this._tryTypeInfoForProperty(property, fqn, interfaces);
     if (!typeInfo) {

@@ -42,9 +42,7 @@ import {
   isWireStruct,
   TOKEN_STRUCT,
 } from './api';
-import { jsiiTypeFqn, objectReference, ObjectTable } from './objects';
-
-import { api } from '.';
+import { ObjectStore } from './object-store';
 
 /**
  * A specific singleton type to be explicit about a Void type
@@ -91,7 +89,7 @@ type TypeLookup = (fqn: spec.FQN) => spec.Type;
 type SymbolLookup = (fqn: spec.FQN) => any;
 
 export interface SerializerHost {
-  readonly objects: ObjectTable;
+  readonly objects: ObjectStore;
   debug(...args: any[]): void;
   lookupType(fqn: string): spec.Type;
   recurse(x: any, type: OptionalValueOrVoid): any;
@@ -420,9 +418,11 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
       */
 
       host.debug('Returning value type by reference');
-      return host.objects.registerObject(value, 'Object', [
-        (optionalValue.type as spec.NamedTypeReference).fqn,
-      ]);
+      return host.objects.register({
+        classFQN: EMPTY_OBJECT_FQN,
+        instance: value as any,
+        interfaceFQNs: [(optionalValue.type as spec.NamedTypeReference).fqn],
+      }).objRef;
     },
     deserialize(value, optionalValue, host) {
       if (typeof value === 'object' && Object.keys(value ?? {}).length === 0) {
@@ -463,14 +463,14 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
 
         // Return same INSTANCE (shouldn't matter but we don't know for sure that it doesn't)
         return validateRequiredProps(
-          host.objects.findObject(value).instance,
+          host.objects.derefObject(value).instance,
           namedType.fqn,
           props,
         );
       }
 
-      if (api.isWireStruct(value)) {
-        const { fqn, data } = value[api.TOKEN_STRUCT];
+      if (isWireStruct(value)) {
+        const { fqn, data } = value[TOKEN_STRUCT];
         if (!isAssignable(fqn, namedType, host.lookupType)) {
           throw new Error(
             `Wire struct type '${fqn}' does not match expected '${namedType.fqn}'`,
@@ -480,8 +480,8 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
       }
 
       // Python, for example, allows using plain mapping objects instead of Structs (dyanmic typing, YOLO!)
-      if (api.isWireMap(value)) {
-        value = value[api.TOKEN_MAP];
+      if (isWireMap(value)) {
+        value = value[TOKEN_MAP];
       }
 
       value = validateRequiredProps(value as any, namedType.fqn, props);
@@ -519,10 +519,14 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
         ? [expectedType.fqn]
         : undefined;
       const jsiiType =
-        jsiiTypeFqn(value) ??
+        host.objects.typeFQN(value) ??
         (spec.isClassType(expectedType) ? expectedType.fqn : 'Object');
 
-      return host.objects.registerObject(value, jsiiType, interfaces);
+      return host.objects.register({
+        classFQN: jsiiType,
+        instance: value as any,
+        interfaceFQNs: interfaces ?? [],
+      }).objRef;
     },
     deserialize(value, optionalValue, host) {
       if (nullAndOk(value, optionalValue)) {
@@ -541,7 +545,7 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
         );
       }
 
-      const { instance, fqn } = host.objects.findObject(value);
+      const { instance, classFQN: fqn } = host.objects.derefObject(value);
 
       const namedTypeRef = optionalValue.type as spec.NamedTypeReference;
       if (namedTypeRef.fqn !== EMPTY_OBJECT_FQN) {
@@ -628,7 +632,7 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
       // Use a previous reference to maintain object identity. NOTE: this may cause us to return
       // a different type than requested! This is just how it is right now.
       // https://github.com/aws/jsii/issues/399
-      const prevRef = objectReference(value);
+      const prevRef = host.objects.refObject(value as any);
       if (prevRef) {
         return prevRef;
       }
@@ -636,10 +640,14 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
       // If this is or should be a reference type, pass or make the reference
       // (Like regular reftype serialization, but without the type derivation to an interface)
       const jsiiType =
-        jsiiTypeFqn(value) ??
+        host.objects.typeFQN(value) ??
         (isByReferenceOnly(value) ? EMPTY_OBJECT_FQN : undefined);
       if (jsiiType) {
-        return host.objects.registerObject(value, jsiiType);
+        return host.objects.register({
+          classFQN: jsiiType,
+          instance: value as any,
+          interfaceFQNs: [],
+        }).objRef;
       }
 
       // At this point we have an object that is not of an exported type. Either an object
@@ -691,7 +699,7 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
       }
       if (isObjRef(value)) {
         host.debug('ANY is a Ref');
-        return host.objects.findObject(value).instance;
+        return host.objects.derefObject(value).instance;
       }
 
       // if the value has a struct token, it was serialized by a typed jsii

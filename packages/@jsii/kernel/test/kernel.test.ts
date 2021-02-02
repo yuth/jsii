@@ -114,7 +114,7 @@ defineTest('stats() return sandbox statistics', (sandbox) => {
   expect(sandbox.stats({}).objectCount).toBe(100);
 });
 
-defineTest('deleteObject will remove the reference', (sandbox) => {
+defineTest('del will remove the reference', (sandbox) => {
   const objects = new Array<any>();
 
   for (let i = 0; i < 100; ++i) {
@@ -131,9 +131,7 @@ defineTest('deleteObject will remove the reference', (sandbox) => {
 
   expect(sandbox.stats({}).objectCount).toBe(50);
 
-  expect(() =>
-    sandbox.get({ objref: objects[10], property: 'value' }),
-  ).toThrow();
+  // We don't check the call would throw - the ref might not have been GC'd yet...
 });
 
 defineTest('in/out primitive types', (sandbox) => {
@@ -2140,8 +2138,8 @@ defineTest('invokeBinScript() return output', (sandbox) => {
     script: 'calc',
   });
 
-  expect(result.stdout).toEqual('Hello World!\n');
-  expect(result.stderr).toEqual('');
+  expect(result.stdout.toString('utf-8')).toEqual('Hello World!\n');
+  expect(result.stderr.toString('utf-8')).toEqual('');
   expect(result.status).toEqual(0);
   expect(result.signal).toBeNull();
 });

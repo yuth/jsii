@@ -26,7 +26,7 @@
     "watch": "tsc --build -w",
     "lint": "eslint . --ext .js,.ts --ignore-path=.gitignore",
     "lint:fix": "yarn lint --fix",
-    "test": "jest",
+    "test": "node --expose-gc ./node_modules/.bin/jest",
     "test:update": "jest -u",
     "package": "package-js"
   },

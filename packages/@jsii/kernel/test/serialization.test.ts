@@ -1,7 +1,7 @@
 import { CANONICAL_ANY, OptionalValue, PrimitiveType } from '@jsii/spec';
 
 import { TOKEN_REF } from '../lib/api';
-import { ObjectTable } from '../lib/objects';
+import { ObjectStore } from '../lib/object-store';
 import {
   SerializationClass,
   SerializerHost,
@@ -27,7 +27,7 @@ const host: SerializerHost = {
   debug: jest.fn().mockName('host.debug'),
   findSymbol: jest.fn().mockName('host.findSymbol'),
   lookupType,
-  objects: new ObjectTable(lookupType),
+  objects: new ObjectStore(lookupType),
   recurse: jest.fn().mockName('host.recurse'),
 };
 

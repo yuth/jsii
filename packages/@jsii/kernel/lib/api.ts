@@ -10,7 +10,7 @@ export interface ObjRef {
 }
 
 export interface AnnotatedObjRef extends ObjRef {
-  [TOKEN_INTERFACES]?: readonly string[];
+  readonly [TOKEN_INTERFACES]?: readonly string[];
 }
 
 export function isObjRef(value: any): value is ObjRef {
