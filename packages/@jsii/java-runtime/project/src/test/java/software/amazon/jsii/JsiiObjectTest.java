@@ -36,7 +36,7 @@ public final class JsiiObjectTest {
 
         // WHEN
         when(mockEngine.getClient()).thenReturn(mockClient);
-        when(mockEngine.nativeToObjRef(any())).thenReturn(objectRef);
+        when(mockEngine.nativeToObjRef(any(), eq(true))).thenReturn(objectRef);
         when(mockClient.callMethod(objectRef, "listOfInterfaces", nodeFactory.arrayNode()))
                 .thenReturn(nodeFactory.arrayNode()
                         .add(makeObjectReferenceNode())
@@ -70,7 +70,7 @@ public final class JsiiObjectTest {
 
         // WHEN
         when(mockEngine.getClient()).thenReturn(mockClient);
-        when(mockEngine.nativeToObjRef(any())).thenReturn(objectRef);
+        when(mockEngine.nativeToObjRef(any(), eq(true))).thenReturn(objectRef);
         when(mockClient.getPropertyValue(objectRef, "interfaces"))
                 .thenReturn(nodeFactory.arrayNode()
                         .add(makeObjectReferenceNode())
@@ -104,7 +104,7 @@ public final class JsiiObjectTest {
 
         // WHEN
         when(mockEngine.getClient()).thenReturn(mockClient);
-        when(mockEngine.nativeToObjRef(any())).thenReturn(objectRef);
+        when(mockEngine.nativeToObjRef(any(), eq(true))).thenReturn(objectRef);
         when(mockClient.callMethod(objectRef, "mapOfInterfaces", nodeFactory.arrayNode()))
                 .thenReturn(nodeFactory.objectNode().set("A", makeObjectReferenceNode()));
 
@@ -137,7 +137,7 @@ public final class JsiiObjectTest {
 
         // WHEN
         when(mockEngine.getClient()).thenReturn(mockClient);
-        when(mockEngine.nativeToObjRef(any())).thenReturn(objectRef);
+        when(mockEngine.nativeToObjRef(any(), eq(true))).thenReturn(objectRef);
         when(mockClient.getPropertyValue(objectRef, "interfaceMap"))
                 .thenReturn(nodeFactory.objectNode().set("A", makeObjectReferenceNode()));
 

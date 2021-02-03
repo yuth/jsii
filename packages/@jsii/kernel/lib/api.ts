@@ -282,3 +282,9 @@ export interface ErrorResponse {
   readonly error: string;
   readonly stack?: string;
 }
+
+export type Notification = ReleaseNotification;
+
+export interface ReleaseNotification {
+  readonly release: readonly string[];
+}

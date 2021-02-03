@@ -18,7 +18,7 @@ public interface JsiiSerializable {
      */
     @Internal
     default TreeNode $jsii$toJson() {
-        JsiiObjectRef objRef = JsiiEngine.getInstance().nativeToObjRef(this);
+        JsiiObjectRef objRef = JsiiEngine.getInstance().nativeToObjRef(this, true);
         return objRef.toJson();
     }
 }

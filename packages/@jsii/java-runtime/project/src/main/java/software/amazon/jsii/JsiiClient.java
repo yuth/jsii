@@ -34,11 +34,20 @@ public final class JsiiClient {
     private final JsiiRuntime runtime;
 
     /**
+     * The object store for this client.
+     */
+    private final ObjectStore objectStore = new ObjectStore();
+
+    /**
      * Creates a new jsii-runtime client.
      * @param runtime The {@link JsiiRuntime}.
      */
     public JsiiClient(final JsiiRuntime runtime) {
         this.runtime = runtime;
+    }
+
+    public ObjectStore getObjectStore() {
+        return objectStore;
     }
 
     /**
@@ -53,7 +62,7 @@ public final class JsiiClient {
                 req.put("tarball", tarball.toString());
                 req.put("name", module.getModuleName());
                 req.put("version", module.getModuleVersion());
-                this.runtime.requestResponse(req);
+                this.requestResponse(req);
             } finally {
                 Files.delete(tarball);
                 Files.delete(tarball.getParent());
@@ -86,17 +95,8 @@ public final class JsiiClient {
         ObjectNode req = JsiiObjectMapper.valueToTree(request);
         req.put("api", "create");
 
-        JsonNode resp = this.runtime.requestResponse(req);
+        JsonNode resp = this.requestResponse(req);
         return JsiiObjectRef.parse(resp);
-    }
-
-    /**
-     * Deletes a remote object.
-     * @param objRef The object reference.
-     */
-    public void deleteObject(final JsiiObjectRef objRef) {
-        ObjectNode req = makeRequest("del", objRef);
-        this.runtime.requestResponse(req);
     }
 
     /**
@@ -109,7 +109,7 @@ public final class JsiiClient {
         ObjectNode req = makeRequest("get", objRef);
         req.put("property", property);
 
-        return this.runtime.requestResponse(req).get("value");
+        return this.requestResponse(req).get("value");
     }
 
     /**
@@ -123,7 +123,7 @@ public final class JsiiClient {
         req.put("property", property);
         req.set("value", value);
 
-        this.runtime.requestResponse(req);
+        this.requestResponse(req);
     }
 
     /**
@@ -136,7 +136,7 @@ public final class JsiiClient {
         ObjectNode req = makeRequest("sget");
         req.put("fqn", fqn);
         req.put("property", property);
-        return this.runtime.requestResponse(req).get("value");
+        return this.requestResponse(req).get("value");
     }
 
     /**
@@ -150,7 +150,7 @@ public final class JsiiClient {
         req.put("fqn", fqn);
         req.put("property", property);
         req.set("value", value);
-        this.runtime.requestResponse(req);
+        this.requestResponse(req);
     }
 
     /**
@@ -165,7 +165,7 @@ public final class JsiiClient {
         req.put("fqn", fqn);
         req.put("method", method);
         req.set("args", args);
-        JsonNode resp = this.runtime.requestResponse(req);
+        JsonNode resp = this.requestResponse(req);
         return resp.get("result");
     }
 
@@ -181,7 +181,7 @@ public final class JsiiClient {
         req.put("method", method);
         req.set("args", args);
 
-        JsonNode resp = this.runtime.requestResponse(req);
+        JsonNode resp = this.requestResponse(req);
         return resp.get("result");
     }
 
@@ -197,7 +197,7 @@ public final class JsiiClient {
         req.put("method", method);
         req.set("args", args);
 
-        JsonNode resp = this.runtime.requestResponse(req);
+        JsonNode resp = this.requestResponse(req);
         return new JsiiPromise(resp.get("promiseid").asText());
     }
 
@@ -209,7 +209,7 @@ public final class JsiiClient {
     public JsonNode endAsyncMethod(final JsiiPromise promise) {
         ObjectNode req = makeRequest("end");
         req.put("promiseid", promise.getPromiseId());
-        JsonNode resp = this.runtime.requestResponse(req);
+        JsonNode resp = this.requestResponse(req);
         if (resp == null) {
             return null; // result is null
         }
@@ -222,7 +222,7 @@ public final class JsiiClient {
      */
     public List<Callback> pendingCallbacks() {
         ObjectNode req = makeRequest("callbacks");
-        JsonNode resp = this.runtime.requestResponse(req);
+        JsonNode resp = this.requestResponse(req);
 
         JsonNode callbacksResp = resp.get("callbacks");
         if (callbacksResp == null || !callbacksResp.isArray()) {
@@ -251,7 +251,7 @@ public final class JsiiClient {
         req.put("err", error);
         req.set("result", result);
 
-        this.runtime.requestResponse(req);
+        this.requestResponse(req);
     }
 
     /**
@@ -263,8 +263,27 @@ public final class JsiiClient {
         ObjectNode req = makeRequest("naming");
         req.put("assembly", moduleName);
 
-        JsonNode resp = this.runtime.requestResponse(req);
+        JsonNode resp = this.requestResponse(req);
         return resp.get("naming");
+    }
+
+    /**
+     * Sends the provided request object to the server, after having cleared the
+     * {@link ObjectStore#getDroppedReferences} list. Issuing `del` calls before
+     * making the actual request helps ensure the `node` process is able to
+     * reclaim more memory, should it need to.
+     *
+     * @param request the request object to be sent to the node process.
+     *
+     * @return the response to the provided request.
+     */
+    private JsonNode requestResponse(final ObjectNode request) {
+        for (final String instanceId : this.objectStore.getDroppedReferences()) {
+            ObjectNode req = makeRequest("del", JsiiObjectRef.fromObjId(instanceId));
+            this.runtime.requestResponse(req);
+        }
+
+        return this.runtime.requestResponse(request);
     }
 
     /**

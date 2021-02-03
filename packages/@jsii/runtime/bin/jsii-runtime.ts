@@ -66,8 +66,8 @@ function makeHandler(
   };
 }
 
-child.stdout.on('data', makeHandler('stdout'));
-child.stderr.on('data', makeHandler('stderr'));
+child.stdout!.on('data', makeHandler('stdout'));
+child.stderr!.on('data', makeHandler('stderr'));
 
 //#endregion
 

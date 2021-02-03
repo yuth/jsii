@@ -10,10 +10,13 @@ import software.amazon.jsii.api.Callback;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import software.amazon.jsii.api.Notification;
 
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static software.amazon.jsii.JsiiVersion.JSII_RUNTIME_VERSION;
@@ -28,9 +31,6 @@ public final class JsiiRuntime {
      */
     private static final String VERSION_BUILD_PART_REGEX = "\\+[a-z0-9]+$";
 
-    /**
-     *
-     */
     static final ThreadLocal<MessageInspector> messageInspector = new ThreadLocal<>();
 
     /**
@@ -63,40 +63,56 @@ public final class JsiiRuntime {
      */
     private Thread shutdownHook;
 
+    public JsiiRuntime() {}
+
+    ObjectStore getObjectStore() {
+        return this.getClient().getObjectStore();
+    }
+
     /**
      * The main API of this class. Sends a JSON request to jsii-runtime and returns the JSON response.
+     *
      * @param request The JSON request
+     *
      * @return The JSON response
+     *
      * @throws JsiiException If the runtime returns an error response.
      */
     JsonNode requestResponse(final JsonNode request) {
+        JsiiRuntime.notifyInspector(request, MessageInspector.MessageType.Request);
         try {
-            JsiiRuntime.notifyInspector(request, MessageInspector.MessageType.Request);
-
             // write request
             String str = request.toString();
             this.stdin.write(str + "\n");
             this.stdin.flush();
-
-            // read response
-            JsonNode resp = readNextResponse();
-
-            // throw if this is an error response
-            if (resp.has("error")) {
-                return processErrorResponse(resp);
-            }
-
-            // process synchronous callbacks (which 'interrupt' the response flow).
-            if (resp.has("callback")) {
-                return processCallbackResponse(resp);
-            }
-
-            // null "ok" means undefined result (or void).
-            return resp.get("ok");
-
         } catch (IOException e) {
             throw new JsiiException("Unable to send request to jsii-runtime: " + e.toString(), e);
         }
+        return this.handleNextResponse();
+    }
+
+    private JsonNode handleNextResponse() {
+        // read response
+        JsonNode resp = readNextResponse();
+
+        // throw if this is an error response
+        if (resp.has("error")) {
+            return processErrorResponse(resp);
+        }
+
+        // process synchronous callbacks (which 'interrupt' the response flow).
+        if (resp.has("callback")) {
+            return processCallbackResponse(resp);
+        }
+
+        // received a notification
+        if (resp.has("notification")) {
+            processNotification(resp);
+            return handleNextResponse();
+        }
+
+        // null "ok" means undefined result (or void).
+        return resp.get("ok");
     }
 
     /**
@@ -154,6 +170,14 @@ public final class JsiiRuntime {
         return requestResponse(req);
     }
 
+    private void processNotification(final JsonNode payload) {
+        final Notification notification = JsiiObjectMapper.treeToValue(payload.get("notification"), NativeType.forClass(Notification.class));
+        if (notification.getRelease() != null) {
+            for (final String instanceId : notification.getRelease()) {
+                this.getObjectStore().release(instanceId);
+            }
+        }
+    }
 
     /**
      * Sets the handler for sync callbacks.

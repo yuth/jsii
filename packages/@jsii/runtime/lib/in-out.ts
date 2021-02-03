@@ -7,6 +7,7 @@ export type Output =
   | { ok: api.KernelResponse }
   | { callback: api.Callback }
   | { pending: true }
+  | { notification: api.Notification }
   | { error: string; stack?: string };
 
 export type Input =

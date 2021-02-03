@@ -463,7 +463,7 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
 
         // Return same INSTANCE (shouldn't matter but we don't know for sure that it doesn't)
         return validateRequiredProps(
-          host.objects.derefObject(value).instance,
+          host.objects.dereference(value).instance,
           namedType.fqn,
           props,
         );
@@ -545,7 +545,7 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
         );
       }
 
-      const { instance, classFQN: fqn } = host.objects.derefObject(value);
+      const { instance, classFQN: fqn } = host.objects.dereference(value);
 
       const namedTypeRef = optionalValue.type as spec.NamedTypeReference;
       if (namedTypeRef.fqn !== EMPTY_OBJECT_FQN) {
@@ -699,7 +699,7 @@ export const SERIALIZERS: { [k: string]: Serializer } = {
       }
       if (isObjRef(value)) {
         host.debug('ANY is a Ref');
-        return host.objects.derefObject(value).instance;
+        return host.objects.dereference(value).instance;
       }
 
       // if the value has a struct token, it was serialized by a typed jsii

@@ -58,6 +58,19 @@ export class Kernel {
     });
   }
 
+  /**
+   * @returns the `ReleaseNotification` that must be sent to the other process,
+   *          or `undefined` if no objects are to be reported as no longer
+   *          referenced.
+   */
+  public makeReleaseNotification(): api.ReleaseNotification | undefined {
+    const instanceIds = this.objects.finalizedInstanceIds();
+    if (instanceIds.length === 0) {
+      return undefined;
+    }
+    return { release: instanceIds };
+  }
+
   public load(req: api.LoadRequest): api.LoadResponse {
     this._debug('load', req);
 
@@ -188,7 +201,7 @@ export class Kernel {
     const { objref } = req;
 
     this._debug('del', objref);
-    this.objects.releaseRef(objref);
+    this.objects.delete(objref);
 
     return {};
   }
@@ -205,8 +218,9 @@ export class Kernel {
 
     const prototype = this._findSymbol(fqn);
 
-    const value = this._ensureSync(`property ${property}`, () =>
-      this._wrapSandboxCode(() => prototype[property]),
+    const value = this._ensureSync(
+      `property ${property}`,
+      () => prototype[property],
     );
 
     this._debug('value:', value);
@@ -231,10 +245,9 @@ export class Kernel {
 
     const prototype = this._findSymbol(fqn);
 
-    this._ensureSync(`property ${property}`, () =>
-      this._wrapSandboxCode(
-        () => (prototype[property] = this._toSandbox(value, ti)),
-      ),
+    this._ensureSync(
+      `property ${property}`,
+      () => (prototype[property] = this._toSandbox(value, ti)),
     );
 
     return {};
@@ -243,7 +256,7 @@ export class Kernel {
   public get(req: api.GetRequest): api.GetResponse {
     const { objref, property } = req;
     this._debug('get', objref, property);
-    const { instance, classFQN: fqn, interfaces } = this.objects.derefObject(
+    const { instance, classFQN: fqn, interfaces } = this.objects.dereference(
       objref,
     );
     const ti = this._typeInfoForProperty(property, fqn, interfaces);
@@ -259,7 +272,7 @@ export class Kernel {
     // by jsii overrides.
     const value = this._ensureSync(
       `property '${objref[TOKEN_REF]}.${propertyToGet}'`,
-      () => this._wrapSandboxCode(() => instance[propertyToGet]),
+      () => instance[propertyToGet],
     );
     this._debug('value:', value);
     const ret = this._fromSandbox(value, ti);
@@ -270,7 +283,7 @@ export class Kernel {
   public set(req: api.SetRequest): api.SetResponse {
     const { objref, property, value } = req;
     this._debug('set', objref, property, value);
-    const { instance, classFQN: fqn, interfaces } = this.objects.derefObject(
+    const { instance, classFQN: fqn, interfaces } = this.objects.dereference(
       objref,
     );
 
@@ -284,10 +297,9 @@ export class Kernel {
 
     const propertyToSet = this._findPropertyTarget(instance, property);
 
-    this._ensureSync(`property '${objref[TOKEN_REF]}.${propertyToSet}'`, () =>
-      this._wrapSandboxCode(
-        () => (instance[propertyToSet] = this._toSandbox(value, propInfo)),
-      ),
+    this._ensureSync(
+      `property '${objref[TOKEN_REF]}.${propertyToSet}'`,
+      () => (instance[propertyToSet] = this._toSandbox(value, propInfo)),
     );
 
     return {};
@@ -307,11 +319,7 @@ export class Kernel {
 
     const ret = this._ensureSync(
       `method '${objref[TOKEN_REF]}.${method}'`,
-      () => {
-        return this._wrapSandboxCode(() =>
-          fn.apply(obj, this._toSandboxValues(args, ti.parameters)),
-        );
-      },
+      () => fn.apply(obj, this._toSandboxValues(args, ti.parameters)),
     );
 
     const result = this._fromSandbox(ret, ti.returns ?? 'void');
@@ -340,11 +348,9 @@ export class Kernel {
     const prototype = this._findSymbol(fqn);
     const fn = prototype[method] as (...params: any[]) => any;
 
-    const ret = this._ensureSync(`method '${fqn}.${method}'`, () => {
-      return this._wrapSandboxCode(() =>
-        fn.apply(prototype, this._toSandboxValues(args, ti.parameters)),
-      );
-    });
+    const ret = this._ensureSync(`method '${fqn}.${method}'`, () =>
+      fn.apply(prototype, this._toSandboxValues(args, ti.parameters)),
+    );
 
     this._debug('method returned:', ret);
     return { result: this._fromSandbox(ret, ti.returns ?? 'void') };
@@ -369,8 +375,9 @@ export class Kernel {
       throw new Error(`Method ${method} is expected to be an async method`);
     }
 
-    const promise = this._wrapSandboxCode(() =>
-      fn.apply(obj, this._toSandboxValues(args, ti.parameters)),
+    const promise = fn.apply(
+      obj,
+      this._toSandboxValues(args, ti.parameters),
     ) as Promise<any>;
 
     // since we are planning to resolve this promise in a different scope
@@ -477,7 +484,7 @@ export class Kernel {
 
   public stats(_req?: api.StatsRequest): api.StatsResponse {
     return {
-      objectCount: this.objects.retainedObjectCount,
+      objectCount: this.objects.objectCount,
     };
   }
 
@@ -552,11 +559,8 @@ export class Kernel {
     const ctor = ctorResult.ctor;
     const { objRef: objref, instance: obj } = this.objects.register({
       classFQN: fqn,
-      instance: this._wrapSandboxCode(
-        () =>
-          new ctor(
-            ...this._toSandboxValues(requestArgs, ctorResult.parameters),
-          ),
+      instance: new ctor(
+        ...this._toSandboxValues(requestArgs, ctorResult.parameters),
       ),
       interfaceFQNs: req.interfaces ?? [],
     });
@@ -564,7 +568,7 @@ export class Kernel {
     // overrides: for each one of the override method names, installs a
     // method on the newly created object which represents the remote "reverse proxy".
 
-    if (overrides) {
+    if (overrides && overrides.length > 0) {
       this._debug('overrides', overrides);
 
       const overrideTypeErrorMessage =
@@ -841,7 +845,7 @@ export class Kernel {
     methodName: string,
     args: any[],
   ) {
-    const { instance, classFQN: fqn, interfaces } = this.objects.derefObject(
+    const { instance, classFQN: fqn, interfaces } = this.objects.dereference(
       objref,
     );
     const ti = this._typeInfoForMethod(methodName, fqn, interfaces);
@@ -1216,10 +1220,6 @@ export class Kernel {
 
   private _makeprid() {
     return `jsii::promise::${this.nextid++}`;
-  }
-
-  private _wrapSandboxCode<T>(fn: () => T): T {
-    return fn();
   }
 
   /**

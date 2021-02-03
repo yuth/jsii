@@ -1,7 +1,7 @@
 import { api, Kernel } from '@jsii/kernel';
 import { EventEmitter } from 'events';
 
-import { Input, IInputOutput } from './in-out';
+import { Input, IInputOutput, Output } from './in-out';
 
 export class KernelHost {
   private readonly kernel = new Kernel(this.callbackHandler.bind(this));
@@ -22,8 +22,12 @@ export class KernelHost {
     }
 
     this.processRequest(req, () => {
-      // Schedule the call to run on the next event loop iteration to
-      // avoid recursion.
+      // Schedule continuation on the next event loop tick/cycle. This avoids
+      // accumulating ridiculously deep stack traces caused by direct recursion,
+      // and also allows `WeakRef`s to get cleared, and `FinalizationRegistry`
+      // to dispatch callbacks (`WeakRef` referent objects cannot be reclaimed
+      // until the end of the JavaScript job - i.e: an event loop tick/cycle -
+      // that created the`WeakRef`).
       setImmediate(() => this.run());
     });
   }
@@ -36,7 +40,7 @@ export class KernelHost {
     // write a "callback" response, which is a special response that tells
     // the client that there's synchonous callback it needs to invoke and
     // bring back the result via a "complete" request.
-    this.inout.write({ callback });
+    this.writeMessage({ callback });
 
     return completeCallback.call(this);
 
@@ -164,22 +168,35 @@ export class KernelHost {
   }
 
   /**
+   * Writes a message to stdout. If needed, will send a ReleaseNotification
+   * first.
+   *
+   * @param message the message to be wired.
+   */
+  private writeMessage(message: Output) {
+    const releaseNotification = this.kernel.makeReleaseNotification();
+    if (releaseNotification) {
+      this.inout.write({ notification: releaseNotification });
+    }
+    this.inout.write(message);
+  }
+
+  /**
    * Writes an "ok" result to stdout.
    */
   private writeOkay(result: any) {
-    const res = { ok: result };
-    this.inout.write(res);
+    this.writeMessage({ ok: result });
   }
 
   /**
    * Writes an "error" result to stdout.
    */
   private writeError(error: any) {
-    const res = { error: error.message, stack: undefined };
+    const res: Output = { error: error.message, stack: undefined };
     if (!this.opts.noStack) {
       res.stack = error.stack;
     }
-    this.inout.write(res);
+    this.writeMessage(res);
   }
 
   /**

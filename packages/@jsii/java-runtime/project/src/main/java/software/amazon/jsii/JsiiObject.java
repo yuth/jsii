@@ -14,7 +14,19 @@ import java.util.Map;
  */
 public class JsiiObject implements JsiiSerializable {
     /**
+     * The original object this one is a proxy for. Might be {@code this}. This
+     * reference is in particular useful to ensure proxies cause the original
+     * object to be retained, as otherwise the distributed reference counting
+     * would be very difficult to maintain.
+     */
+    @Nullable
+    private JsiiObject original = this;
+
+    /**
      * The interface-proxies that this object can also be represented as.
+     *
+     * This should always be accessed through {@link #original} instead of
+     * directly!
      */
     private final Map<Class<? extends JsiiObject>, JsiiObject> proxies = new HashMap<>();
 
@@ -367,15 +379,16 @@ public class JsiiObject implements JsiiSerializable {
      */
     @Internal
     final <T extends JsiiObject> T asInterfaceProxy(final Class<? extends T> proxyClass) {
-        if (!this.proxies.containsKey(proxyClass)) {
+        if (!this.original.proxies.containsKey(proxyClass)) {
             try {
                 final Constructor<? extends JsiiObject> constructor = proxyClass.getDeclaredConstructor(JsiiObjectRef.class);
                 @SuppressWarnings("deprecated")
                 final boolean oldAccessible = constructor.isAccessible();
                 try {
                     constructor.setAccessible(true);
-                    final JsiiObject proxyInstance = constructor.newInstance(this.jsii$engine.nativeToObjRef(this));
-                    this.proxies.put(proxyClass, proxyInstance);
+                    final JsiiObject proxyInstance = constructor.newInstance(this.jsii$engine.nativeToObjRef(this, false));
+                    proxyInstance.original = this;
+                    this.original.proxies.put(proxyClass, proxyInstance);
                 } finally {
                     constructor.setAccessible(oldAccessible);
                 }
@@ -388,7 +401,7 @@ public class JsiiObject implements JsiiSerializable {
             }
         }
         @SuppressWarnings("unchecked")
-        final T result = (T)this.proxies.get(proxyClass);
+        final T result = (T)this.original.proxies.get(proxyClass);
         return result;
     }
 }

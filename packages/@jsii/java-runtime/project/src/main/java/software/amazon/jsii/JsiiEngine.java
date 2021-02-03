@@ -13,6 +13,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.ref.PhantomReference;
+import java.lang.ref.Reference;
+import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.*;
 import java.util.*;
 
@@ -41,12 +44,7 @@ public final class JsiiEngine implements JsiiCallbackHandler {
      * so that {@link JsiiEngine} instances can be garbage collected after all
      * instances they are assigned to are themselves collected.
      */
-    private static Map<Object, JsiiEngine> engineAssociations = new WeakHashMap<>();
-
-    /**
-     * Object cache.
-     */
-    private final Map<String, Object> objects = new HashMap<>();
+    private static final Map<Object, JsiiEngine> engineAssociations = new WeakHashMap<>();
 
     /**
      * The jsii-server child process.
@@ -56,7 +54,7 @@ public final class JsiiEngine implements JsiiCallbackHandler {
     /**
      * The set of modules we already loaded into the VM.
      */
-    private Map<String, JsiiModule> loadedModules = new HashMap<>();
+    private final Map<String, JsiiModule> loadedModules = new HashMap<>();
 
     /**
      * A map that associates value instances with the {@link JsiiObjectRef} that
@@ -64,7 +62,7 @@ public final class JsiiEngine implements JsiiCallbackHandler {
      * so that {@link JsiiObjectRef} instances can be garbage collected after
      * all instances they are assigned to are themselves collected.
      */
-    private Map<Object, JsiiObjectRef> objectRefs = new WeakHashMap<>();
+    private final Map<Object, JsiiObjectRef> objectRefs = new WeakHashMap<>();
 
     /**
      * @return The singleton instance.
@@ -202,7 +200,7 @@ public final class JsiiEngine implements JsiiCallbackHandler {
      * @return The jsii object the represents this remote object.
      */
     public Object nativeFromObjRef(final JsiiObjectRef objRef) {
-        Object obj = this.objects.get(objRef.getObjId());
+        Object obj = this.runtime.getObjectStore().getObject(objRef.getObjId());
         if (obj == null) {
             obj = createNativeProxy(objRef.getFqn(), objRef);
             this.registerObject(objRef, obj);
@@ -239,7 +237,7 @@ public final class JsiiEngine implements JsiiCallbackHandler {
         if (!assigned.equals(objRef)) {
             throw new IllegalStateException("Another object reference was previously assigned to this instance!");
         }
-        this.objects.put(assigned.getObjId(), instance);
+        this.runtime.getObjectStore().register(instance, assigned.getObjId());
     }
 
     /**
@@ -248,21 +246,36 @@ public final class JsiiEngine implements JsiiCallbackHandler {
      * kernel, and gets assigned to the instance before being returned.
      *
      * @param nativeObject The native object to obtain the reference for
+     * @param ensureRetained Whether the object should always be retained
+     *                       (including if an existing reference is re-used).
+     *                       This should be {@code true} whenever the returned
+     *                       {@link JsiiObjectRef} will be wired out to the node
+     *                       process.
      *
      * @return A jsii object reference
      */
-    public JsiiObjectRef nativeToObjRef(final Object nativeObject) {
+    public JsiiObjectRef nativeToObjRef(final Object nativeObject, final boolean ensureRetained) {
+        final ObjectStore objectStore = JsiiEngine.getEngineFor(nativeObject)
+            .runtime
+            .getObjectStore();
+
         if (nativeObject instanceof JsiiObject) {
             final JsiiObject jsiiObject = (JsiiObject) nativeObject;
             if (jsiiObject.jsii$objRef == null) {
                 jsiiObject.jsii$objRef = this.createNewObject(jsiiObject);
+            } else if (ensureRetained) {
+                objectStore.retain(jsiiObject.jsii$objRef.getObjId());
             }
             return jsiiObject.jsii$objRef;
         }
-        return this.objectRefs.computeIfAbsent(
+        final JsiiObjectRef result = this.objectRefs.computeIfAbsent(
             nativeObject,
             (_k) -> this.createNewObject(nativeObject)
         );
+        if (ensureRetained) {
+            objectStore.retain(result.getObjId());
+        }
+        return result;
     }
 
     /**
@@ -273,7 +286,7 @@ public final class JsiiEngine implements JsiiCallbackHandler {
      * @throws JsiiException If the object is not found.
      */
     public Object getObject(final JsiiObjectRef objRef) {
-        Object obj = this.objects.get(objRef.getObjId());
+        Object obj = this.runtime.getObjectStore().getObject(objRef.getObjId());
         if (obj == null) {
             throw new JsiiException("Cannot find jsii object: " + objRef.getObjId());
         }
@@ -601,6 +614,7 @@ public final class JsiiEngine implements JsiiCallbackHandler {
         Collection<String> interfaces = discoverInterfaces(klass);
 
         JsiiObjectRef objRef = this.getClient().createObject(fqn, Arrays.asList(args), overrides, interfaces);
+
         registerObject(objRef, uninitializedNativeObject);
 
         return objRef;

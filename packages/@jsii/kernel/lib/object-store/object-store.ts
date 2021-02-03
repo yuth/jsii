@@ -1,6 +1,4 @@
 import { Type } from '@jsii/spec';
-import * as assert from 'assert';
-import { inspect } from 'util';
 
 import { ObjRef, TOKEN_REF } from '../api';
 import { ObjectHandle, ReferentObject } from './object-handle';
@@ -32,7 +30,7 @@ export class ObjectStore {
   private readonly instanceInfo = new WeakMap<object, ObjectHandle>();
 
   private readonly finalizationRegistry = new FinalizationRegistry(
-    this.finalize.bind(this),
+    this.onProxyFinalized.bind(this),
   );
   private readonly finalized = new Set<string>();
 
@@ -49,10 +47,18 @@ export class ObjectStore {
    * @returns The approximate number of object instances this `ObjectStore`
    *          currently strong references.
    */
-  public get retainedObjectCount(): number {
-    return Array.from(this.handles.values()).filter(
-      (handle) => handle.isRetained,
-    ).length;
+  public get objectCount(): number {
+    return this.handles.size;
+  }
+
+  /**
+   * Removes the object designated by the provided `ObjRef` from this
+   * `ObjectStore`.
+   *
+   * @param ref the `ObjRef` which should be deleted.
+   */
+  public delete(ref: ObjRef): void {
+    this.handles.delete(ref[TOKEN_REF]);
   }
 
   /**
@@ -62,19 +68,19 @@ export class ObjectStore {
    *
    * @returns the referent object and it's meta-information.
    */
-  public derefObject(
+  public dereference(
     ref: ObjRef,
   ): {
     readonly classFQN: string;
     readonly instance: ReferentObject;
     readonly interfaces: readonly string[];
   } {
-    const handle = this.derefObjectHandle(ref);
-    return handle.ensureAlive((instance) => ({
+    const handle = this.getHandle(ref[TOKEN_REF]);
+    return {
       classFQN: handle.classFQN,
-      instance,
+      instance: handle.proxy,
       interfaces: handle.interfaces,
-    }));
+    };
   }
 
   /**
@@ -90,12 +96,19 @@ export class ObjectStore {
 
   /**
    * Obtains (then flushes) the list of finalized instance IDs. Those can be
-   * reported to other process as no longer in-use, so their counterparts there
-   * can be garbage collected.
+   * reported to other process as no longer in-use by this process, so their
+   * counterparts there can be garbage collected.
+   *
+   * In particular, this signals other processes can request those instances be
+   * `delete`d from this `ObjectStore`.
    */
   public finalizedInstanceIds(): readonly string[] {
     try {
-      return Array.from(this.finalized);
+      return (
+        Array.from(this.finalized)
+          // Verify no new proxy was created since the instance ID was enqueued
+          .filter((iid) => !this.handles.get(iid)?.hasProxy)
+      );
     } finally {
       this.finalized.clear();
     }
@@ -118,10 +131,11 @@ export class ObjectStore {
     }
 
     const existingHandle = this.tryGetHandle(opts.instance);
-    const handle =
-      existingHandle ??
+    const handle: ObjectHandle<T> =
+      (existingHandle as any) ??
       new ObjectHandle<T>({
         ...opts,
+        finalizationRegistry: this.finalizationRegistry,
         resolveType: this.resolveType,
         sequence: this.idSequence,
       });
@@ -129,17 +143,11 @@ export class ObjectStore {
     if (existingHandle == null) {
       this.handles.set(handle.instanceId, handle);
       this.instanceInfo.set(opts.instance, handle);
-      this.finalizationRegistry.register(opts.instance, handle.instanceId);
     } else {
       existingHandle.mergeInterfaces(opts.interfaceFQNs);
     }
 
-    // The assertion should never fail unless something really weird has
-    // happened, since the instance we are trying to retain here has been
-    // provided as an argument to this call (and is hence reachable).
-    assert(handle.retain(), `Could not retain handle ${handle.instanceId}`);
-
-    return { instance: opts.instance, objRef: handle.objRef };
+    return { instance: handle.proxy, objRef: handle.objRef };
   }
 
   /**
@@ -158,50 +166,6 @@ export class ObjectStore {
   }
 
   /**
-   * Adds a strong reference to the provided object.
-   *
-   * @param obj    the object to be strongly referenced.
-   */
-  public retain<T extends object>(obj: T) {
-    const handle = this.instanceInfo.get(obj);
-    if (handle == null) {
-      throw new Error(
-        `Attempted to retain unregistered object: ${inspect(obj)}`,
-      );
-    }
-    // This assertion is out of an excess of precaution: the object cannot have
-    // been garbage-collected yet, since it was provided to us via a parameter.
-    // If an `AssertionError` triggers, there likely was some form of
-    // corruption happening.
-    assert(handle.retain(), `Could not retain object ${inspect(obj)}!`);
-  }
-
-  /**
-   * Removes the strong reference held on the designated object.
-   *
-   * @param obj    the object on which a reference is to be dropped.
-   */
-  public release<T extends object>(obj: T) {
-    const handle = this.instanceInfo.get(obj);
-    if (handle == null) {
-      throw new Error(
-        `Attempted to release unregistered object: ${inspect(obj)}`,
-      );
-    }
-    handle.release();
-  }
-
-  /**
-   * Removes the strong reference held on the object designated by the provided
-   * `ObjRef`.
-   *
-   * @param ref the `ObjRef` which should be released.
-   */
-  public releaseRef(ref: ObjRef): void {
-    this.derefObjectHandle(ref).release();
-  }
-
-  /**
    * Retrieves the FQN associated to a given value.
    *
    * @param value the value which type's FQN is needed.
@@ -212,23 +176,25 @@ export class ObjectStore {
     return (value.constructor as any)[this.typeInfo];
   }
 
-  private finalize(instanceId: string): void {
-    this.finalized.add(instanceId);
-    this.handles.delete(instanceId);
-  }
-
-  private tryGetHandle(instance: any): ObjectHandle | undefined {
-    return this.instanceInfo.get(instance);
-  }
-
-  private derefObjectHandle(ref: ObjRef): ObjectHandle {
-    const handle = this.handles.get(ref[TOKEN_REF]);
+  private getHandle(instanceId: string): ObjectHandle {
+    const handle = this.handles.get(instanceId);
     if (handle == null) {
       throw new Error(
-        `Could not find handle registered with ID: ${ref[TOKEN_REF]}`,
+        `Could not find handle registered with ID: ${instanceId}`,
       );
     }
     return handle;
+  }
+
+  private onProxyFinalized(handle: ObjectHandle): void {
+    // Note - for some reason, you won't get a breakpoint to hit here, probably
+    // because this gets invoked by the `FinalizationRegistry` out of the normal
+    // flow of operations of the agent.
+    this.finalized.add(handle.instanceId);
+  }
+
+  private tryGetHandle(instance: object): ObjectHandle | undefined {
+    return this.instanceInfo.get(ObjectHandle.realObject(instance));
   }
 }
 
@@ -259,8 +225,9 @@ export interface RegisterOptions<T extends object> {
 
 export interface ManagedObject<T> {
   /**
-   * The managed object instance. This is guaranteed to be the same instance
-   * that was provided to the `ObjectStore#register` call.
+   * The managed object instance. This value should be used in place of the one
+   * that was passed to `ObjectStore#register`, as otherwise, reference counting
+   * might not be performed correctly.
    */
   readonly instance: T;
 

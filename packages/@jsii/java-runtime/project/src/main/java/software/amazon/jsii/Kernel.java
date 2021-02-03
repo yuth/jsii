@@ -23,7 +23,7 @@ public final class Kernel {
     @Internal
     public static <T> T asyncCall(final Object receiver, final String method, final NativeType<T> nativeType, @Nullable final Object... args) {
         final JsiiEngine engine = JsiiEngine.getEngineFor(receiver);
-        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver);
+        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver, true);
 
         final JsiiClient client = engine.getClient();
         final JsiiPromise promise = client.beginAsyncMethod(objRef, method, JsiiObjectMapper.valueToTree(args));
@@ -48,7 +48,7 @@ public final class Kernel {
     @Internal
     public static <T> T call(final Object receiver, final String method, final NativeType<T> nativeType, @Nullable final Object... args) {
         final JsiiEngine engine = JsiiEngine.getEngineFor(receiver);
-        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver);
+        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver, true);
         final JsonNode result = engine.getClient().callMethod(objRef, method, JsiiObjectMapper.valueToTree(args));
         return JsiiObjectMapper.treeToValue(result, nativeType);
     }
@@ -67,7 +67,7 @@ public final class Kernel {
     @Internal
     public static <T> T get(final Object receiver, final String property, final NativeType<T> type) {
         final JsiiEngine engine = JsiiEngine.getEngineFor(receiver);
-        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver);
+        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver, true);
 
         final JsonNode result = engine.getClient().getPropertyValue(objRef, property);
         return JsiiObjectMapper.treeToValue(result, type);
@@ -83,7 +83,7 @@ public final class Kernel {
     @Internal
     public static void set(final Object receiver, final String property, @Nullable final Object value) {
         final JsiiEngine engine = JsiiEngine.getEngineFor(receiver);
-        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver);
+        final JsiiObjectRef objRef = engine.nativeToObjRef(receiver, true);
 
         engine.getClient().setPropertyValue(objRef, property, JsiiObjectMapper.valueToTree(value));
     }
