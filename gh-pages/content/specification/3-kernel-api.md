@@ -71,6 +71,41 @@ interface Exit {
     request stream should be closed as soon as the `exit` message was sent. Additional data may however be received from
     the `@jsii/kernel` that is intended to the `STDOUT` or `STDERR` console streams.
 
+## Notifications
+
+The `@jsii/kernel` may send _notification_ messages through the response channel as any time. Those notifications should
+be handled as soon as they are received, after which the normal flow of the program should continue.
+
+Each notification consists of a single object:
+```ts
+interface Notification {
+  /** The notification payload */
+  readonly notification: ReleaseNotification;
+}
+```
+
+No response is expected by the `@jsii/kernel` for a notification, those are a one-way message. The `@jsii/kernel` will
+assume the notification was correctly handled. Failure to do so may result in undefined behavior.
+
+### Release objects
+
+The "release" notification is used by the `@jsii/kernek` process to inform the _host_ process that a set of objects are
+known to only be accessible by the `@jsii/kernel` itself. This means the _host_ process can make their own version of
+this object become garbage collectable (and once actually reclaimed, to issue a [`del`](#destroying-objects) request).
+
+```ts
+interface ReleaseNotification {
+  /** The list of Object IDs that are no longer referenced by JavaScript */
+  readonly release: string[];
+}
+```
+
+!!! info
+    For more information on the distributed memory management model for _jsii_, refer to the
+    [_memory management_ section of the runtime architecture documentation][memory-management].
+
+    [memory-management]: ../../overview/runtime-architecture#memory-management
+
 ## General Kernel API
 
 Once the `hello` handshake is complete, a sequence of request and responses are exchanged with the `@jsii/kernel`.
@@ -385,6 +420,18 @@ interface CallbacksResponse {
 
 ### Destroying Objects
 
+!!! danger
+    The `del` API can only be used with `ObjectReference`s which have been targeted by a [`release`](#release-objects)
+    notification since they were last part of a message sent to the `@jsii/kernel` process. Failure to achieve this
+    pre-condition will result in an error, either directly as a result of the `del` call, or subsequently in the program
+    flow.
+
+    For more information on the distributed memory management model for _jsii_, refer to the
+    [_memory management_ section of the runtime architecture documentation][memory-management].
+
+    [memory-management]: ../../overview/runtime-architecture#memory-management
+
+
 Once the _host_ app no longer needs a particular object, it can be discarded. This can happen for example when the
 _host_ reference to an object is garbage collected or freed. In order to allow the **JavaScript** process to also
 reclaim the associated memory footprint, the `del` API must be used:
@@ -398,20 +445,6 @@ interface DelRequest {
   api: 'del';
 }
 ```
-
-!!! danger
-    Failure to use the `del` API will result in memory leakage as the **JavaScript** process accumulates garbage in its
-    Kernel instance. This can eventually result in a _Javascript heap out of memory_ error, and the abnormal termination
-    of the `node` process, and consequently of the _host_ app.
-
-!!! bug "Unimplemented"
-    The existing _host_ runtime libraries do not implement this behavior!
-
-!!! question
-    There is currently no provision for the `node` process to inform the _host_ app about object references it dropped.
-    This mechanism is necessary in order to support garbage collection of resources that involve _host_-implemented code
-    (in such cases, the _host_ app must hold on to any instance it passed to **JavaScript** until it is no longer
-    reachable from there).
 
 Upon successfully deleting an object reference, the `@jsii/kernel` will return an empty response object:
 

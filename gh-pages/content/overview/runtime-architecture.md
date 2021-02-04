@@ -44,7 +44,7 @@ libraries from a different language follows:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Communication Protocol
+### Communication Protocol
 
 As shown in the [architecture overview](#architecture-overview) diagram, the
 `@jsii/runtime` process receives requests via its `STDIN` stream, sends
@@ -132,7 +132,7 @@ The *Wrapper* process manages the *Core* process such that:
     libraries loaded in the `@jsii/kernel` instance are not allowed to interact
     directly with file descriptor `FD#3`.
 
-## Initialization Process
+### Initialization Process
 
 The initialization workflow can be described as:
 
@@ -156,3 +156,103 @@ The initialization workflow can be described as:
     **Javascript** code, then responds back.
 6. Upon exiting, the *host* process closes the communication channels with the
     child `node` process, causing it to exit.
+
+## Event Loop
+
+The `@jsii/kernel` implements an event loop described on the following diagram:
+
+```plaintext
+    ┌────────────────────┐
+    │       hello        │
+    └──────────┬─────────┘
+               │
+┌──────────────┤─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+│              │
+│   ┌──────────▼─────────┐     ┌────────────────────┐               │
+│   │    Read Request    ├ ─ ─ ▶    process.exit    │
+│   └──────────┬─────────┘     └────────────────────┘               │
+│              │
+│   ┌──────────▼─────────┐     ┌────────────────────┐    ┌──────────┴─────────┐
+│   │  Process Request   ├ ─ ─ ▶      JS Impl.      ├ ─ ─▶      Callback      │
+│   └──────────┬─────────┘     └────────────────────┘    └────────────────────┘
+│              │
+│   ┌──────────▼─────────┐     ┌────────────────────┐
+│   │   Notifications    ├ ─ ─ ▶ Send Release Notif │
+│   └──────────┬─────────┘     └────────────────────┘
+│              │
+│   ┌──────────▼─────────┐
+│   │   Send Response    │
+│   └──────────┬─────────┘
+│              │
+└──────────────┘
+```
+
+The sequence is as follows:
+
+1. Once ready to accept request, emit the `hello` message
+1. Read the next request from the input pipe
+
+    * If that request is the `exit` call, gracefully terminates the `node`
+      process using `process.exit(exitCode)` with the requested `exitCode`
+
+1. Process the request
+
+    * Most requests will involve calling into the **JavaScript** implementation
+    * The **JavaScript** execution might need a _host_-defined `override` to be
+      called, in which case, a `callback` request is immediately sent, and a
+      nested event loop starts, and ends once it receives the `ok` response that
+      provides the result of the `callback`.
+
+1. Send any outstanding notifications
+
+    * If any objects have become release-able by the _host runtime_, the
+      [`release`](../../specification/3-kernel-api#release-objects) notification
+      is emitted.
+
+1. Send the response to the current request
+1. Proceed to step `2.`, and process the next request
+
+## Memory Management
+
+In this architecture, two distinct processes interact with the same objects.
+Each process uses a different execution engine, and the instances cannot be
+directly shared between them. Instead, one process owns the "real" object, and
+the other maintains a proxy object (which will forward method calls and property
+accesses to the other process).
+
+This indirection means that the two processes must coordinate in order to
+correctly determine when an object's memory can be reclaimed. The mechanisms
+described in the [specification](../specification) are used by each process to
+let the other one know that no user-accessible references to the value exist:
+
+- [Release notifications][release-notif] are emitted by the `@jsii/kernel` to
+  let the _host runtime library_ know that it no longer has a user-accessible
+  reference to certain objects.
+- [`del` requests][del-request] are sent by the _host application_ when it no
+  longer holds any reference to an object.
+
+The process that originally creates an object is **responsible** for keeping
+their copy of the object alive _at least_ until the other process has declared
+they no longer hold user-accessible references to their corresponding proxy.
+
+In particular:
+
+- Objects created by the **JavaScript** execution, and passed over to the _host_
+  are the responsibility of the `@jsii/kernel` process. The _host runtime_ may
+  emit a [`del` request][del-request] without waiting for a
+  [release notification][release-notif] to have been received for this instance.
+- Objects created by the _host application_ are to be retained by the _host
+  runtime_ until they have been part of a [release notification][release-notif].
+  Only then can the _host runtime_ allow the memory for that object to be
+  reclaimed, before emitting a [`del` request][del-request].
+
+!!! danger
+    Whenever an object created by the _host application_ is passed across to the
+    `@jsii/kernel` process, an subsequent [release notification][release-notif]
+    is needed, as new user-accessible references to the value may have been
+    created. Consequently, whenever the `@jsii/kernel` emits a
+    [release notification][release-notif], it is responsible to ensure it will
+    not notify about objects that are referenced again.
+
+[del-request]: ../../specification/3-kernel-api#destroying-objects
+[release-notif]: ../../specification/3-kernel-api#release-objects

@@ -10,8 +10,8 @@ usual), but also in **C#** (and other languages from the _.NET_ family), **Go**,
 languages will be added in the future!
 
 !!! warning
-    Due to *JSON* marshaling costs and the absence of a distributed garbage collector feature, `jsii` modules are best
-    suited for development and build tools, as opposed to performance-sensitive or resource-constrained applications.
+    Due to *JSON* marshaling costs, `jsii` modules may not be suited for to performance-sensitive or
+    resource-constrained applications.
 
     See [Runtime Architecture] for more information.
 
