@@ -3,6 +3,7 @@ import { types } from 'util';
 
 import { AnnotatedObjRef, TOKEN_INTERFACES, TOKEN_REF } from '../api';
 import { InterfaceCollection } from '../interface-collection';
+import type { ObjectStore } from './object-store';
 import { Sequence } from './sequence';
 
 /* eslint-disable @typescript-eslint/ban-types */
@@ -61,7 +62,10 @@ export class ObjectHandle<T extends ReferentObject = ReferentObject> {
    *
    * @param opts the necessary information to create the `ObjectHandle`.
    */
-  public constructor(opts: ObjectHandleOptions<T>) {
+  public constructor(
+    private readonly objectStore: ObjectStore,
+    opts: ObjectHandleOptions<T>,
+  ) {
     this.classFQN = opts.classFQN;
     this.instanceId = `${opts.classFQN}@${opts.sequence.next()}`;
 
@@ -123,6 +127,9 @@ export class ObjectHandle<T extends ReferentObject = ReferentObject> {
     );
     this.finalizationRegistry.register(proxy, this);
     this.proxyReference = new WeakRef(proxy);
+
+    this.objectStore.emit('retained', this.instanceId, this.objectStore.stats);
+
     return proxy;
   }
 

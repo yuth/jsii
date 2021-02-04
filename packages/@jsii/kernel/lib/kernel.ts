@@ -56,6 +56,30 @@ export class Kernel {
       setImmediate, // async tests
       require: nodeRequire, // modules need to "require"
     });
+
+    if (process.env.JSII_TRACE_OBJECT_STORE) {
+      const events = [
+        'managed',
+        'retained',
+        'releasable',
+        'unmanaged',
+      ] as const;
+      const maxLength = Math.max(...events.map((evt) => evt.length));
+      let maxCount = 0;
+      for (const event of events) {
+        const paddedEvent = event.padEnd(maxLength, ' ');
+        this.objects.on(event, (instanceId, storeStats) => {
+          const count = storeStats.managedObjects;
+          const retained = storeStats.retainedObjects;
+          const retainedPct = ((100 * retained) / count).toFixed(0);
+          maxCount = Math.max(maxCount, count);
+          const stats = `count=${storeStats.managedObjects}/${maxCount}, ${retained}/${retainedPct}% retained`;
+          console.error(
+            `[@jsii/kernel] ObjectStore::${paddedEvent} (${stats}) => ${instanceId}`,
+          );
+        });
+      }
+    }
   }
 
   /**
@@ -484,7 +508,7 @@ export class Kernel {
 
   public stats(_req?: api.StatsRequest): api.StatsResponse {
     return {
-      objectCount: this.objects.objectCount,
+      objectCount: this.objects.stats.retainedObjects,
     };
   }
 

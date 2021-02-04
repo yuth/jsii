@@ -1,4 +1,6 @@
 import { Type } from '@jsii/spec';
+import * as assert from 'assert';
+import { EventEmitter } from 'events';
 
 import { ObjRef, TOKEN_REF } from '../api';
 import { ObjectHandle, ReferentObject } from './object-handle';
@@ -21,7 +23,7 @@ import { Sequence } from './sequence';
  * makes it difficult to test actual collection in unit tests (as we do not
  * control the current job).
  */
-export class ObjectStore {
+export class ObjectStore implements TypedEventEmitter<ObjectStoreEvents> {
   private readonly typeInfo = Symbol('__jsii::FQN__');
 
   private readonly idSequence = new Sequence();
@@ -34,6 +36,17 @@ export class ObjectStore {
   );
   private readonly finalized = new Set<string>();
 
+  private readonly eventEmitter: TypedEventEmitter<ObjectStoreEvents> = new EventEmitter();
+  public readonly emit = this.eventEmitter.emit.bind(this.eventEmitter);
+  public readonly on = this.eventEmitter.on.bind(this.eventEmitter);
+  public readonly once = this.eventEmitter.once.bind(this.eventEmitter);
+
+  /**
+   * @returns The approximate number of object instances this `ObjectStore`
+   *          currently strong references.
+   */
+  public readonly stats = new ObjectStoreStats(this.handles);
+
   /**
    * Creates a new `ObjectStore` with the provided values.
    *
@@ -44,21 +57,23 @@ export class ObjectStore {
   public constructor(private readonly resolveType: (fqn: string) => Type) {}
 
   /**
-   * @returns The approximate number of object instances this `ObjectStore`
-   *          currently strong references.
-   */
-  public get objectCount(): number {
-    return this.handles.size;
-  }
-
-  /**
    * Removes the object designated by the provided `ObjRef` from this
    * `ObjectStore`.
    *
    * @param ref the `ObjRef` which should be deleted.
    */
   public delete(ref: ObjRef): void {
-    this.handles.delete(ref[TOKEN_REF]);
+    const instanceId = ref[TOKEN_REF];
+
+    // It is illegal to delete an object that is still user-reachable!
+    assert(
+      !this.handles.get(instanceId)?.hasProxy,
+      `Attempted to delete user-reachable object: ${instanceId}`,
+    );
+
+    if (this.handles.delete(instanceId)) {
+      this.emit('unmanaged', instanceId, this.stats);
+    }
   }
 
   /**
@@ -133,7 +148,7 @@ export class ObjectStore {
     const existingHandle = this.tryGetHandle(opts.instance);
     const handle: ObjectHandle<T> =
       (existingHandle as any) ??
-      new ObjectHandle<T>({
+      new ObjectHandle<T>(this, {
         ...opts,
         finalizationRegistry: this.finalizationRegistry,
         resolveType: this.resolveType,
@@ -191,12 +206,84 @@ export class ObjectStore {
     // because this gets invoked by the `FinalizationRegistry` out of the normal
     // flow of operations of the agent.
     this.finalized.add(handle.instanceId);
+
+    this.emit('releasable', handle.instanceId, this.stats);
   }
 
   private tryGetHandle(instance: object): ObjectHandle | undefined {
     return this.instanceInfo.get(ObjectHandle.realObject(instance));
   }
 }
+
+/**
+ * Statistics collected about an `ObjectStore`.
+ */
+export class ObjectStoreStats {
+  /**
+   * @internal
+   */
+  public constructor(private readonly objectStore: ObjectStore['handles']) {}
+
+  /**
+   * The count of objects tracked by an `ObjectStore`.
+   */
+  public get managedObjects(): number {
+    return this.objectStore.size;
+  }
+
+  /**
+   * The count of objects retained by an `ObjectStore`. These objects are not
+   * eligible for deletion.
+   */
+  public get retainedObjects(): number {
+    return (
+      Array.from(this.objectStore.values())
+        // Retained objects are those for which a live proxy exists
+        .filter((handle) => handle.hasProxy).length
+    );
+  }
+}
+
+export type ObjectStoreEvents = {
+  /**
+   * Emitted when a new object starts being managed by this `ObjectStore`.
+   *
+   * @param instanceId the instance ID allocated to this object.
+   * @param stats      statistics from the `ObjectStore` that emitted this
+   *                   event.
+   */
+  managed(instanceId: string, stats: ObjectStoreStats): void;
+
+  /**
+   * Emitted when a user-accessible reference for the object is created, when
+   * none previously existed.
+   *
+   * @param instanceId the instance ID of the object that is now
+   *                   user-accessible.
+   */
+  retained(instanceId: string, stats: ObjectStoreStats): void;
+
+  /**
+   * Emitted after the last user-accessible reference to an ojbect has been
+   * reclaimed by the garbage collector.
+   *
+   * @param instanceId the instance ID of the object that is no longer
+   *                   user-accessible.
+   * @param stats      statistics from the `ObjectStore` that emitted this
+   *                   event.
+   */
+  releasable(instanceId: string, stats: ObjectStoreStats): void;
+
+  /**
+   * Emitted after an object has stopped being managed by this `ObjectStore`.
+   *
+   * @param instanceId the former instance ID of the object that is no longer
+   *                   managed.
+   * @param stats      statistics from the `ObjectStore` that emitted this
+   *                   event.
+   */
+  unmanaged(instanceId: string, stats: ObjectStoreStats): void;
+};
 
 /**
  * An object to be tracked by this facility.
@@ -236,3 +323,19 @@ export interface ManagedObject<T> {
    */
   readonly objRef: ObjRef;
 }
+
+/**
+ * A nifty way to create type-safe EventEmitter interfaces without having to
+ * repeat the interfaces for emit, on, once, ...
+ */
+export type TypedEventEmitter<
+  Events extends Record<string | symbol, (...args: any[]) => void>
+> = {
+  emit<K extends keyof Events>(
+    event: K,
+    ...payload: Parameters<Events[K]>
+  ): boolean;
+
+  on<K extends keyof Events>(event: K, listener: Events[K]): void;
+  once<K extends keyof Events>(event: K, listener: Events[K]): void;
+};
