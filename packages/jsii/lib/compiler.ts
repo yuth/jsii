@@ -299,6 +299,9 @@ export class Compiler implements Emitter {
 
     const pi = this.options.projectInfo;
 
+    const overridesPath = process.env.JSII_TSCONFIG_OVERRIDES_PATH;
+    const overrides = overridesPath ? await fs.readJSON(overridesPath) : {};
+
     this.typescriptConfig = {
       compilerOptions: {
         ...pi.tsc,
@@ -332,6 +335,7 @@ export class Compiler implements Emitter {
       // TypeScript compiler does. Make it relative so that the files are
       // movable. Not strictly required but looks better.
       references: references?.map((p) => ({ path: p })),
+      ...overrides,
     };
   }
 

@@ -158,6 +158,9 @@ export async function loadProjectInfo(
     pkg.jsii?.metadata,
   );
 
+  const overridesPath = process.env.JSII_MANIFEST_OVERRIDES_PATH;
+  const overrides = overridesPath ? await fs.readJSON(overridesPath) : {};
+
   return {
     projectRoot,
     packageJson: pkg,
@@ -225,6 +228,7 @@ export async function loadProjectInfo(
     },
     bin: pkg.bin,
     diagnostics: _loadDiagnostics(pkg.jsii?.diagnostics),
+    ...overrides,
   };
 }
 
