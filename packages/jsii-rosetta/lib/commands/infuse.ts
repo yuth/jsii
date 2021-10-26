@@ -3,6 +3,7 @@ import * as fs from 'fs-extra';
 
 import { loadAssemblies, replaceAssembly } from '../jsii/assemblies';
 import { SnippetSelector, mean, meanLength, shortest, longest } from '../snippet-selectors';
+import { generateClassExample } from '../generate-examples';
 import { LanguageTablet, TranslatedSnippet } from '../tablets/tablets';
 
 export interface InfuseResult {
@@ -75,6 +76,9 @@ export async function infuse(
         }
         insertExample(meanResult.originalSource.source, type);
         typesWithInsertedExamples++;
+      } else if (type.kind === spec.TypeKind.Class) {
+        // remember to call insertExample here
+        console.log(generateClassExample(type, assembly.types ?? {}));
       }
     }
 
