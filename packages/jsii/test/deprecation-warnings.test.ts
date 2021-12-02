@@ -388,6 +388,26 @@ describe('Call injections', () => {
     );
   });
 
+  test('does not generate a require statement when no calls were injected', async () => {
+    const result = await compileJsiiForTest(
+      {
+        'index.ts': `export * from './some/folder/handler'`,
+        'some/folder/handler.ts': `
+          export function handler(event: any) { return event; }
+        `,
+      },
+      undefined /* callback */,
+      { addDeprecationWarnings: true },
+    );
+
+    const expectedPath = ['..', '..', '.warnings.jsii.js'].join('/');
+
+    const content = jsFile(result, 'some/folder/handler');
+    expect(content).not.toContain(
+      `const jsiiDeprecationWarnings = require("${expectedPath}")`,
+    );
+  });
+
   test('deprecated methods', async () => {
     const result = await compileJsiiForTest(
       `
@@ -473,7 +493,7 @@ describe('Call injections', () => {
     );
 
     expect(jsFile(result)).toMatch(
-      'constructor() { jsiiDeprecationWarnings.print("testpkg.Foo", ""); }',
+      'constructor() { jsiiDeprecationWarnings.print("testpkg.Foo", "Use something else"); }',
     );
   });
 });
