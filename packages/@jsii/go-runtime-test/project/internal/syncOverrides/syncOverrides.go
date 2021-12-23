@@ -8,7 +8,7 @@ import (
 
 type SyncOverrides struct {
 	jsiicalc.SyncVirtualMethods
-	AnotherTheProperty *string
+	AnotherTheProperty jsii.String
 	Multiplier         int
 	ReturnSuper        bool
 	CallAsync          bool
@@ -20,7 +20,7 @@ func New() *SyncOverrides {
 	return s
 }
 
-func (t *SyncOverrides) VirtualMethod(n *float64) *float64 {
+func (t *SyncOverrides) VirtualMethod(n jsii.Number) jsii.Number {
 	if t.ReturnSuper {
 		return t.SyncVirtualMethods.VirtualMethod(n)
 	}
@@ -28,13 +28,13 @@ func (t *SyncOverrides) VirtualMethod(n *float64) *float64 {
 		obj := overrideAsyncMethods.New()
 		return obj.CallMe()
 	}
-	return jsii.Number(5 * (*n) * float64(t.Multiplier))
+	return jsii.Number(5 * float64(n) * float64(t.Multiplier))
 }
 
-func (t *SyncOverrides) TheProperty() *string {
+func (t *SyncOverrides) TheProperty() jsii.String {
 	return jsii.String("I am an override!")
 }
 
-func (t *SyncOverrides) SetTheProperty(value *string) {
+func (t *SyncOverrides) SetTheProperty(value jsii.String) {
 	t.AnotherTheProperty = value
 }

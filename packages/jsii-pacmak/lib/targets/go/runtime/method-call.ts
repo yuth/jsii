@@ -33,9 +33,7 @@ export class MethodCall extends FunctionCall {
       this.returnVarName,
     );
     if (this.returnsVal) {
-      code.line(`var ${this.returnVarName} ${this.returnType}`);
-      code.line();
-      code.open(`${JSII_INVOKE_FUNC}(`);
+      code.open(`return ${JSII_INVOKE_FUNC}[${this.returnType}](`);
     } else {
       code.open(`${JSII_INVOKE_VOID_FUNC}(`);
     }
@@ -43,16 +41,8 @@ export class MethodCall extends FunctionCall {
     code.line(`${this.parent.instanceArg},`);
     code.line(`"${this.parent.method.name}",`);
     code.line(args ? `${args},` : 'nil, // no parameters');
-    if (this.returnsVal) {
-      code.line(`&${this.returnVarName},`);
-    }
 
     code.close(`)`);
-
-    if (this.returnsVal) {
-      code.line();
-      code.line(`return ${this.returnVarName}`);
-    }
   }
 
   private emitStatic(code: CodeMaker) {
@@ -64,9 +54,7 @@ export class MethodCall extends FunctionCall {
       this.returnVarName,
     );
     if (this.returnsVal) {
-      code.line(`var ${this.returnVarName} ${this.returnType}`);
-      code.line();
-      code.open(`${JSII_SINVOKE_FUNC}(`);
+      code.open(`return ${JSII_SINVOKE_FUNC}[${this.returnType}](`);
     } else {
       code.open(`${JSII_SINVOKE_VOID_FUNC}(`);
     }
@@ -74,16 +62,8 @@ export class MethodCall extends FunctionCall {
     code.line(`"${this.parent.parent.fqn}",`);
     code.line(`"${this.parent.method.name}",`);
     code.line(args ? `${args},` : 'nil, // no parameters');
-    if (this.returnsVal) {
-      code.line(`&${this.returnVarName},`);
-    }
 
     code.close(`)`);
-
-    if (this.returnsVal) {
-      code.line();
-      code.line(`return ${this.returnVarName}`);
-    }
   }
 
   private get returnVarName(): string {

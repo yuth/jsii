@@ -33,3 +33,10 @@ func (c *Client) ManageObject(v reflect.Value) (ref api.ObjectRef, err error) {
 
 	return
 }
+
+// RegisterAlias registers the provided object instance as an alias for the
+// provided original object. Returns an error if the object was already
+// registered to an object ID.
+func (c *Client) RegisterAlias(value reflect.Value, objId string) error {
+	return c.objects.Register(value, objId)
+}

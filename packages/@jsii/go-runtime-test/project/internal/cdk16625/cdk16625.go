@@ -1,6 +1,7 @@
 package cdk16625
 
 import (
+	"github.com/aws/jsii-runtime-go"
 	"github.com/aws/jsii/jsii-calc/go/jsiicalc/v3"
 	abc "github.com/aws/jsii/jsii-calc/go/jsiicalc/v3/cdk16625"
 )
@@ -11,10 +12,10 @@ func New() abc.Cdk16625 {
 	return c
 }
 
-type cdk16625 struct{
+type cdk16625 struct {
 	abc.Cdk16625
 }
 
-func (c *cdk16625) Unwrap(rng jsiicalc.IRandomNumberGenerator) *float64 {
+func (c *cdk16625) Unwrap(rng jsiicalc.IRandomNumberGenerator) jsii.Number {
 	return rng.Next()
 }

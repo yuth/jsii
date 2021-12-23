@@ -1,10 +1,7 @@
 module github.com/aws/jsii-runtime-go
 
-go 1.16
+go 1.18
 
-require (
-	github.com/Masterminds/semver/v3 v3.1.1
-	github.com/stretchr/testify v1.7.0
-)
+require github.com/Masterminds/semver/v3 v3.1.1
 
 retract v1.27.0

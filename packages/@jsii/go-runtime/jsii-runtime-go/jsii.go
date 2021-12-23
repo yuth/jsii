@@ -1,6 +1,8 @@
 package jsii
 
-import "github.com/aws/jsii-runtime-go/internal/kernel"
+import (
+	"github.com/aws/jsii-runtime-go/internal/kernel"
+)
 
 // Close finalizes the runtime process, signalling the end of the execution to
 // the jsii kernel process, and waiting for graceful termination. The best

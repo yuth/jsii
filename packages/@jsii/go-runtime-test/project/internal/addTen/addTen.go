@@ -6,6 +6,6 @@ import (
 	"github.com/aws/jsii/jsii-calc/go/scopejsiicalclib"
 )
 
-func New(val *float64) calc.Add {
+func New(val jsii.Number) calc.Add {
 	return calc.NewAdd(scopejsiicalclib.NewNumber(val), scopejsiicalclib.NewNumber(jsii.Number(10)))
 }

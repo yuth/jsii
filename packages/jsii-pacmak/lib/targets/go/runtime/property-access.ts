@@ -8,7 +8,7 @@ import {
   JSII_SSET_FUNC,
 } from './constants';
 import { FunctionCall } from './function-call';
-import { slugify, emitInitialization } from './util';
+import { emitInitialization } from './util';
 
 export class GetProperty extends FunctionCall {
   public constructor(public readonly parent: GoProperty) {
@@ -16,16 +16,10 @@ export class GetProperty extends FunctionCall {
   }
 
   public emit(code: CodeMaker) {
-    const resultVar = slugify('returns', [this.parent.instanceArg]);
-    code.line(`var ${resultVar} ${this.returnType}`);
-
-    code.open(`${JSII_GET_FUNC}(`);
+    code.open(`return ${JSII_GET_FUNC}[${this.returnType}](`);
     code.line(`${this.parent.instanceArg},`);
     code.line(`"${this.parent.property.name}",`);
-    code.line(`&${resultVar},`);
     code.close(`)`);
-
-    code.line(`return ${resultVar}`);
   }
 }
 
@@ -48,16 +42,11 @@ export class StaticGetProperty extends FunctionCall {
 
   public emit(code: CodeMaker) {
     emitInitialization(code);
-    const resultVar = slugify('returns', []);
-    code.line(`var ${resultVar} ${this.returnType}`);
 
-    code.open(`${JSII_SGET_FUNC}(`);
+    code.open(`return ${JSII_SGET_FUNC}[${this.returnType}](`);
     code.line(`"${this.parent.parent.fqn}",`);
     code.line(`"${this.parent.property.name}",`);
-    code.line(`&${resultVar},`);
     code.close(`)`);
-
-    code.line(`return ${resultVar}`);
   }
 }
 

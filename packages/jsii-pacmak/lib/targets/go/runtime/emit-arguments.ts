@@ -15,6 +15,23 @@ export function emitArguments(
   parameters: readonly GoParameter[],
   returnVarName: string,
 ): string | undefined {
+  const checkedParameters = parameters
+    // We only check required parameters (neither optional nor variadic)
+    .filter(({ parameter }) => !parameter.optional && !parameter.variadic)
+    // The only nil-able types are classes and interfaces. Unions also render as interface{} so they are nil-able in go.
+    // Structs, enums and primitives are passed by-value when required, and those have non-nil zero values.
+    .filter(
+      ({ parameter }) =>
+        parameter.type.unionOfTypes != null ||
+        parameter.type.type?.isClassType() ||
+        (parameter.type.type?.isInterfaceType() &&
+          !parameter.type.type?.isDataType()),
+    );
+  for (const { name } of checkedParameters) {
+    code.line(
+      `if ${name} == nil { panic("Parameters \\"${name}\\" is required (received nil)") }`,
+    );
+  }
   const argsList = parameters.map((param) => param.name);
   if (argsList.length === 0) {
     return undefined;

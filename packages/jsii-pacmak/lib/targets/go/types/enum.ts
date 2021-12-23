@@ -4,7 +4,8 @@ import { EnumType, EnumMember } from 'jsii-reflect';
 import { SpecialDependencies } from '../dependencies';
 import { EmitContext } from '../emit-context';
 import { Package } from '../package';
-import { JSII_RT_ALIAS } from '../runtime';
+import { JSII_INIT_ALIAS, JSII_INIT_FUNC, JSII_RT_ALIAS } from '../runtime';
+import { emitOptionImplementation } from './_markers';
 import { GoType } from './go-type';
 
 export class Enum extends GoType {
@@ -24,21 +25,22 @@ export class Enum extends GoType {
     const valueType = 'string';
     code.line(`type ${this.name} ${valueType}`);
     code.line();
-    code.open(`const (`);
 
+    code.open(`const (`);
     // Const values are prefixed by the wrapped value type
     for (const member of this.members) {
       member.emit(code);
     }
-
     code.close(`)`);
     code.line();
+
+    emitOptionImplementation(context, this.name, this.name);
   }
 
   public emitRegistration(code: CodeMaker): void {
-    code.open(`${JSII_RT_ALIAS}.RegisterEnum(`);
+    code.open(`${JSII_RT_ALIAS}.RegisterEnum[${this.name}](`);
     code.line(`"${this.fqn}",`);
-    code.line(`reflect.TypeOf((*${this.name})(nil)).Elem(),`);
+    code.line(`${JSII_INIT_ALIAS}.${JSII_INIT_FUNC},`);
     code.open(`map[string]interface{}{`);
     for (const member of this.members) {
       code.line(`"${member.rawValue}": ${member.name},`);
@@ -54,9 +56,9 @@ export class Enum extends GoType {
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: false,
+      api: false,
       init: false,
       internal: false,
-      time: false,
     };
   }
 }

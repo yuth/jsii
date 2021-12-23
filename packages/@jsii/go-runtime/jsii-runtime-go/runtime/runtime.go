@@ -2,10 +2,11 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/aws/jsii-runtime-go/internal/api"
-	"github.com/aws/jsii-runtime-go/internal/kernel"
 	"reflect"
 	"strings"
+
+	"github.com/aws/jsii-runtime-go/internal/api"
+	"github.com/aws/jsii-runtime-go/internal/kernel"
 )
 
 // FQN represents a fully-qualified type name in the jsii type system.
@@ -46,7 +47,8 @@ func Load(name string, version string, tarball []byte) {
 // RegisterClass associates a class fully qualified name to the specified class
 // interface, member list, and proxy maker function. Panics if class is not a go
 // interface, or if the provided fqn was already used to register a different type.
-func RegisterClass(fqn FQN, class reflect.Type, members []Member, maker func() interface{}) {
+func RegisterClass[T any](fqn FQN, members []Member, maker func() interface{}) {
+	class := reflect.TypeOf((*T)(nil)).Elem()
 	client := kernel.GetClient()
 
 	overrides := make([]api.Override, len(members))
@@ -63,9 +65,10 @@ func RegisterClass(fqn FQN, class reflect.Type, members []Member, maker func() i
 // type, and members. Panics if enum is not a reflect.String type, any value in
 // the provided members map is of a type other than enum, or if the provided
 // fqn was already used to register a different type.
-func RegisterEnum(fqn FQN, enum reflect.Type, members map[string]interface{}) {
+func RegisterEnum[T ~string](fqn FQN, loader func(), members map[string]interface{}) {
+	enum := reflect.TypeOf((*T)(nil)).Elem()
 	client := kernel.GetClient()
-	if err := client.Types().RegisterEnum(api.FQN(fqn), enum, members); err != nil {
+	if err := client.Types().RegisterEnum(api.FQN(fqn), enum, loader, members); err != nil {
 		panic(err)
 	}
 }
@@ -73,7 +76,8 @@ func RegisterEnum(fqn FQN, enum reflect.Type, members map[string]interface{}) {
 // RegisterInterface associates an interface's fully qualified name to the
 // specified interface type, member list, and proxy maker function. Panics if iface is not
 // an interface, or if the provided fqn was already used to register a different type.
-func RegisterInterface(fqn FQN, iface reflect.Type, members []Member, maker func() interface{}) {
+func RegisterInterface[T any](fqn FQN, loader func(), members []Member, maker func() interface{}) {
+	iface := reflect.TypeOf((*T)(nil)).Elem()
 	client := kernel.GetClient()
 
 	overrides := make([]api.Override, len(members))
@@ -81,7 +85,7 @@ func RegisterInterface(fqn FQN, iface reflect.Type, members []Member, maker func
 		overrides[i] = m.toOverride()
 	}
 
-	if err := client.Types().RegisterInterface(api.FQN(fqn), iface, overrides, maker); err != nil {
+	if err := client.Types().RegisterInterface(api.FQN(fqn), iface, loader, overrides, maker); err != nil {
 		panic(err)
 	}
 }
@@ -89,9 +93,10 @@ func RegisterInterface(fqn FQN, iface reflect.Type, members []Member, maker func
 // RegisterStruct associates a struct's fully qualified name to the specified
 // struct type. Panics if strct is not a struct, or if the provided fqn was
 // already used to register a different type.
-func RegisterStruct(fqn FQN, strct reflect.Type) {
+func RegisterStruct[T any](fqn FQN, loader func()) {
 	client := kernel.GetClient()
-	if err := client.Types().RegisterStruct(api.FQN(fqn), strct); err != nil {
+	strct := reflect.TypeOf((*T)(nil)).Elem()
+	if err := client.Types().RegisterStruct(api.FQN(fqn), strct, loader); err != nil {
 		panic(err)
 	}
 }
@@ -192,7 +197,7 @@ func Create(fqn FQN, args []interface{}, inst interface{}) {
 
 // Invoke will call a method on a jsii class instance. The response will be
 // decoded into the expected return type for the method being called.
-func Invoke(obj interface{}, method string, args []interface{}, ret interface{}) {
+func Invoke[R any](obj interface{}, method string, args []interface{}) R {
 	client := kernel.GetClient()
 
 	// Find reference to class instance in client
@@ -214,7 +219,9 @@ func Invoke(obj interface{}, method string, args []interface{}, ret interface{})
 		panic(err)
 	}
 
-	client.CastAndSetToPtr(ret, res.Result)
+	var ret R
+	client.CastAndSetToPtr(&ret, res.Result)
+	return ret
 }
 
 // InvokeVoid will call a void method on a jsii class instance.
@@ -241,7 +248,7 @@ func InvokeVoid(obj interface{}, method string, args []interface{}) {
 
 // StaticInvoke will call a static method on a given jsii class. The response
 // will be decoded into the expected return type for the method being called.
-func StaticInvoke(fqn FQN, method string, args []interface{}, ret interface{}) {
+func StaticInvoke[R any](fqn FQN, method string, args []interface{}) R {
 	client := kernel.GetClient()
 
 	res, err := client.SInvoke(kernel.StaticInvokeProps{
@@ -254,7 +261,9 @@ func StaticInvoke(fqn FQN, method string, args []interface{}, ret interface{}) {
 		panic(err)
 	}
 
-	client.CastAndSetToPtr(ret, res.Result)
+	var ret R
+	client.CastAndSetToPtr(&ret, res.Result)
+	return ret
 }
 
 // StaticInvokeVoid will call a static void method on a given jsii class.
@@ -274,7 +283,7 @@ func StaticInvokeVoid(fqn FQN, method string, args []interface{}) {
 
 // Get reads a property value on a given jsii class instance. The response
 // should be decoded into the expected type of the property being read.
-func Get(obj interface{}, property string, ret interface{}) {
+func Get[R any](obj interface{}, property string) R {
 	client := kernel.GetClient()
 
 	// Find reference to class instance in client
@@ -295,12 +304,15 @@ func Get(obj interface{}, property string, ret interface{}) {
 		panic(err)
 	}
 
-	client.CastAndSetToPtr(ret, res.Value)
+	var ret R
+	client.CastAndSetToPtr(&ret, res.Value)
+	return ret
 }
 
 // StaticGet reads a static property value on a given jsii class. The response
 // should be decoded into the expected type of the property being read.
-func StaticGet(fqn FQN, property string, ret interface{}) {
+func StaticGet[R any](fqn FQN, property string) R {
+
 	client := kernel.GetClient()
 
 	res, err := client.SGet(kernel.StaticGetProps{
@@ -312,7 +324,9 @@ func StaticGet(fqn FQN, property string, ret interface{}) {
 		panic(err)
 	}
 
-	client.CastAndSetToPtr(ret, res.Value)
+	var ret R
+	client.CastAndSetToPtr(&ret, res.Value)
+	return ret
 }
 
 // Set writes a property on a given jsii class instance. The value should match
@@ -380,7 +394,7 @@ func getMethodOverrides(ptr interface{}, basePrefix string) (methods []string) {
 	mCache := make(map[string]bool)
 	getMethodOverridesRec(ptr, basePrefix, mCache)
 	// Return overriden methods names in embedding hierarchy
-	for m, _ := range mCache {
+	for m := range mCache {
 		methods = append(methods, m)
 	}
 	return

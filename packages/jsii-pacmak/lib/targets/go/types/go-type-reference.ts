@@ -3,6 +3,7 @@ import { TypeReference } from 'jsii-reflect';
 import * as log from '../../../logging';
 import { SpecialDependencies } from '../dependencies';
 import { Package } from '../package';
+import { JSII_API_ALIAS } from '../runtime';
 import { GoType } from './go-type';
 
 /*
@@ -10,12 +11,12 @@ import { GoType } from './go-type';
  */
 class PrimitiveMapper {
   private readonly MAP: { [key: string]: string } = {
-    number: 'float64',
-    boolean: 'bool',
+    number: `${JSII_API_ALIAS}.Number`,
+    boolean: `${JSII_API_ALIAS}.Bool`,
     any: 'interface{}',
-    date: 'time.Time',
-    string: 'string',
-    json: `map[string]interface{}`,
+    date: `${JSII_API_ALIAS}.Time`,
+    string: `${JSII_API_ALIAS}.String`,
+    json: `${JSII_API_ALIAS}.Json`,
   };
 
   public constructor(private readonly name: string) {}
@@ -63,25 +64,19 @@ export class GoTypeRef {
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: false,
+      api: containsBoxedPrimitive(this.reference),
       init: false,
       internal: false,
-      time: containsDate(this.reference),
     };
 
-    function containsDate(ref: TypeReference): boolean {
-      if (ref.primitive === 'date') {
-        return true;
-      }
-      if (ref.arrayOfType) {
-        return containsDate(ref.arrayOfType);
-      }
-      if (ref.mapOfType) {
-        return containsDate(ref.mapOfType);
-      }
-      if (ref.unionOfTypes) {
-        return ref.unionOfTypes.some(containsDate);
-      }
-      return false;
+    function containsBoxedPrimitive(ref: TypeReference): boolean {
+      return (
+        (ref.primitive != null && ref.primitive !== 'any') ||
+        (ref.arrayOfType != null && containsBoxedPrimitive(ref.arrayOfType)) ||
+        (ref.mapOfType != null && containsBoxedPrimitive(ref.mapOfType)) ||
+        (ref.unionOfTypes != null &&
+          ref.unionOfTypes.some(containsBoxedPrimitive))
+      );
     }
   }
 
@@ -153,11 +148,11 @@ export class GoTypeRef {
    * Return the name of a type for reference from the `Package` passed in
    */
   public scopedName(scope: Package): string {
-    return this.scopedTypeName(this.typeMap, scope);
+    return this.scopedTypeName(this.typeMap, scope, false);
   }
 
-  public scopedReference(scope: Package): string {
-    return this.scopedTypeName(this.typeMap, scope, true);
+  public scopedReference(scope: Package, optional = false): string {
+    return this.scopedTypeName(this.typeMap, scope, optional);
   }
 
   private buildTypeMap(ref: GoTypeRef): TypeMap {
@@ -190,41 +185,48 @@ export class GoTypeRef {
   public scopedTypeName(
     typeMap: TypeMap,
     scope: Package,
-    asRef = false,
+    optional: boolean,
   ): string {
-    if (typeMap.type === 'primitive') {
-      const { value } = typeMap;
-      const prefix = asRef && value !== 'interface{}' ? '*' : '';
-      return `${prefix}${value}`;
-    } else if (typeMap.type === 'array' || typeMap.type === 'map') {
-      const prefix = asRef ? '*' : '';
-      const wrapper = typeMap.type === 'array' ? '[]' : 'map[string]';
-      const innerName =
-        this.scopedTypeName(typeMap.value.typeMap, scope, asRef) ??
-        'interface{}';
-      return `${prefix}${wrapper}${innerName}`;
-    } else if (typeMap.type === 'interface') {
-      const prefix = asRef && typeMap.value.datatype ? '*' : '';
-      const baseName = typeMap.value.name;
-      // type is defined in the same scope as the current one, no namespace required
-      if (scope.packageName === typeMap.value.namespace && baseName) {
-        // if the current scope is the same as the types scope, return without a namespace
-        return `${prefix}${baseName}`;
-      }
+    switch (typeMap.type) {
+      case 'primitive':
+        const { value } = typeMap;
+        return optional && value !== 'interface{}' ? wrap(value) : value;
+      case 'array':
+        const itemType =
+          this.scopedTypeName(typeMap.value.typeMap, scope, optional) ??
+          'interface{}';
+        return wrap(`${JSII_API_ALIAS}.Slice[${itemType}]`);
+      case 'map':
+        const valueType =
+          this.scopedTypeName(typeMap.value.typeMap, scope, optional) ??
+          'interface{}';
+        return wrap(`${JSII_API_ALIAS}.Map[${valueType}]`);
+      case 'interface':
+        const baseName = typeMap.value.name;
+        // type is defined in the same scope as the current one, no namespace required
+        if (scope.packageName === typeMap.value.namespace && baseName) {
+          // if the current scope is the same as the types scope, return without a namespace
+          return wrap(baseName);
+        }
 
-      // type is defined in another module and requires a namespace and import
-      if (baseName) {
-        return `${prefix}${typeMap.value.namespace}.${baseName}`;
-      }
-    } else if (typeMap.type === 'union') {
-      return 'interface{}';
-    } else if (typeMap.type === 'void') {
-      return '';
+        // type is defined in another module and requires a namespace and import
+        if (baseName) {
+          return wrap(`${typeMap.value.namespace}.${baseName}`);
+        }
+        break;
+      case 'union':
+        return 'interface{}';
+      case 'void':
+        return '';
     }
 
     // type isn't handled
     throw new Error(
       `Type ${typeMap.value?.name} does not resolve to a known Go type.`,
     );
+
+    function wrap(type: string): string {
+      return optional ? `${JSII_API_ALIAS}.Option[${type}]` : type;
+    }
   }
 }

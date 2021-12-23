@@ -15,6 +15,7 @@ import {
   StaticSetProperty,
 } from '../runtime';
 import { getMemberDependencies, getParamDependencies } from '../util';
+import { emitOptionImplementation } from './_markers';
 import { GoType } from './go-type';
 import { GoTypeRef } from './go-type-reference';
 import { GoInterface } from './interface';
@@ -117,12 +118,13 @@ export class GoClass extends GoType {
     for (const method of this.methods) {
       method.emit(context);
     }
+
+    emitOptionImplementation(context, this.proxyName, this.name);
   }
 
   public emitRegistration(code: CodeMaker): void {
-    code.open(`${JSII_RT_ALIAS}.RegisterClass(`);
+    code.open(`${JSII_RT_ALIAS}.RegisterClass[${this.name}](`);
     code.line(`"${this.fqn}",`);
-    code.line(`reflect.TypeOf((*${this.name})(nil)).Elem(),`);
 
     const allMembers = [
       ...this.type.allMethods
@@ -159,13 +161,13 @@ export class GoClass extends GoType {
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: this.initializer != null || this.members.length > 0,
+      api:
+        !!this.initializer?.specialDependencies.api ||
+        this.members.some((m) => m.specialDependencies.api),
       init:
         this.initializer != null ||
         this.members.some((m) => m.specialDependencies.init),
       internal: this.baseTypes.some((base) => this.pkg.isExternalType(base)),
-      time:
-        !!this.initializer?.specialDependencies.time ||
-        this.members.some((m) => m.specialDependencies.time),
     };
   }
 
@@ -289,9 +291,11 @@ export class GoClassConstructor extends GoMethod {
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: true,
+      api: this.parameters.some(
+        (p) => p.parameter.optional || p.reference.specialDependencies.api,
+      ),
       init: true,
       internal: false,
-      time: this.parameters.some((p) => p.reference.specialDependencies.time),
     };
   }
 
@@ -308,10 +312,7 @@ export class GoClassConstructor extends GoMethod {
 
   private emitNew({ code, documenter }: EmitContext) {
     const constr = `New${this.parent.name}`;
-    const paramString =
-      this.parameters.length === 0
-        ? ''
-        : this.parameters.map((p) => p.toString()).join(', ');
+    const paramString = this.parameters.map((p) => p.toString()).join(', ');
 
     documenter.emit(this.type.docs);
     code.openBlock(`func ${constr}(${paramString}) ${this.parent.name}`);
@@ -379,11 +380,12 @@ export class ClassMethod extends GoMethod {
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: true,
+      api:
+        this.parameters.some(
+          (p) => p.parameter.optional || p.reference.specialDependencies.api,
+        ) || !!this.reference?.specialDependencies.api,
       init: this.method.static,
       internal: false,
-      time:
-        !!this.parameters.some((p) => p.reference.specialDependencies.time) ||
-        !!this.reference?.specialDependencies.time,
     };
   }
 }

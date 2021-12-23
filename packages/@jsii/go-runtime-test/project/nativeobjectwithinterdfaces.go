@@ -15,13 +15,13 @@ func newPureNativeFriendlyRandom() *pureNativeFriendlyRandom {
 	}
 }
 
-func (p *pureNativeFriendlyRandom) Next() *float64 {
+func (p *pureNativeFriendlyRandom) Next() jsii.Number {
 	n := p._nextNumber
 	p._nextNumber += 1000
-	return &n
+	return jsii.Number(n)
 }
 
-func (p *pureNativeFriendlyRandom) Hello() *string {
+func (p *pureNativeFriendlyRandom) Hello() jsii.String {
 	return jsii.String("I am a native!")
 }
 
@@ -36,11 +36,11 @@ func NewSubclassNativeFriendlyRandom() *subclassNativeFriendlyRandom {
 	return &s
 }
 
-func (s *subclassNativeFriendlyRandom) Next() *float64 {
+func (s *subclassNativeFriendlyRandom) Next() jsii.Number {
 	defer func() { s.nextNumber += 100 }()
 	return jsii.Number(s.nextNumber)
 }
 
-func (s *subclassNativeFriendlyRandom) Hello() *string {
+func (s *subclassNativeFriendlyRandom) Hello() jsii.String {
 	return jsii.String("SubclassNativeFriendlyRandom")
 }

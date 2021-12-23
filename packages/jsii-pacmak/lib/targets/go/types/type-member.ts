@@ -26,7 +26,7 @@ export interface GoTypeMember {
 */
 export class GoProperty implements GoTypeMember {
   public readonly name: string;
-  public readonly reference?: GoTypeRef;
+  public readonly reference: GoTypeRef;
   public readonly immutable: boolean;
 
   public constructor(
@@ -36,17 +36,15 @@ export class GoProperty implements GoTypeMember {
     this.name = jsiiToPascalCase(this.property.name);
     this.immutable = property.immutable;
 
-    if (property.type) {
-      this.reference = new GoTypeRef(parent.pkg.root, property.type);
-    }
+    this.reference = new GoTypeRef(parent.pkg.root, property.type);
   }
 
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: true,
+      api: !!this.reference?.specialDependencies.api,
       init: this.static,
       internal: false,
-      time: !!this.reference?.specialDependencies.time,
     };
   }
 
@@ -55,9 +53,9 @@ export class GoProperty implements GoTypeMember {
   }
 
   public get returnType(): string {
-    return (
-      this.reference?.scopedReference(this.parent.pkg) ??
-      this.property.type.toString()
+    return this.reference.scopedReference(
+      this.parent.pkg,
+      this.property.optional,
     );
   }
 
@@ -174,7 +172,10 @@ export abstract class GoMethod implements GoTypeMember {
 
   public get returnType(): string {
     return (
-      this.reference?.scopedReference(this.parent.pkg) ?? this.method.toString()
+      this.reference?.scopedReference(
+        this.parent.pkg,
+        Method.isMethod(this.method) && this.method.returns?.optional,
+      ) ?? this.method.toString()
     );
   }
 
@@ -206,7 +207,15 @@ export class GoParameter {
   }
 
   public toString(): string {
-    const paramType = this.reference.scopedReference(this.parent.pkg);
+    const paramType = this.reference.scopedReference(
+      this.parent.pkg,
+      this.parameter.optional,
+    );
     return `${this.name} ${this.parameter.variadic ? '...' : ''}${paramType}`;
   }
+}
+
+export interface GoTypeParameter {
+  readonly name: string;
+  readonly constraint: string;
 }

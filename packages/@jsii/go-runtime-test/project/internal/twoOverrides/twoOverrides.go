@@ -15,10 +15,10 @@ func New() *TwoOverrides {
 	return t
 }
 
-func (t *TwoOverrides) OverrideMe(*float64) *float64 {
+func (t *TwoOverrides) OverrideMe(jsii.Number) jsii.Number {
 	return jsii.Number(666)
 }
 
-func (t *TwoOverrides) OverrideMeToo() *float64 {
+func (t *TwoOverrides) OverrideMeToo() jsii.Number {
 	return jsii.Number(10)
 }

@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -8,8 +9,17 @@ import (
 )
 
 var (
-	anyType = reflect.TypeOf((*interface{})(nil)).Elem()
+	anyType  = reflect.TypeOf((*interface{})(nil)).Elem()
+	boxTypes = make(map[reflect.Type]reflect.Type)
 )
+
+// RegisterBoxType is used to register a box type (i.e: jsii.String) with the
+// raw type it converts into (i.e: string).
+func RegisterBoxType[Box any, Raw any]() {
+	boxType := reflect.TypeOf((*Box)(nil)).Elem()
+	rawType := reflect.TypeOf((*Raw)(nil)).Elem()
+	boxTypes[boxType] = rawType
+}
 
 // CastAndSetToPtr accepts a pointer to any type and attempts to cast the value
 // argument to be the same type. Then it sets the value of the pointer element
@@ -91,7 +101,7 @@ func (c *Client) castAndSetToPtr(ptr reflect.Value, data reflect.Value) {
 	}
 
 	if date, isDate := castValToDate(data); isDate {
-		ptr.Set(reflect.ValueOf(date))
+		ptr.Set(reflect.ValueOf(date).Convert(ptr.Type()))
 		return
 	}
 
@@ -120,7 +130,22 @@ func (c *Client) castAndSetToPtr(ptr reflect.Value, data reflect.Value) {
 		return
 	}
 
-	ptr.Set(data)
+	if data.CanConvert(ptr.Type()) {
+		ptr.Set(data.Convert(ptr.Type()))
+		return
+	}
+
+	if ptr.Type().Kind() == reflect.Interface {
+		if method, found := ptr.Type().MethodByName("FromOption__"); found && method.Type.NumIn() == 0 && method.Type.NumOut() == 1 {
+			targetType := method.Type.Out(0)
+			if data.CanConvert(targetType) {
+				ptr.Set(data.Convert(targetType))
+				return
+			}
+		}
+	}
+
+	panic(fmt.Sprintf("Unable to convert from %s to %s", data.Type(), ptr.Type()))
 }
 
 // Accepts pointers to structs that implement interfaces and searches for an
@@ -137,19 +162,27 @@ func (c *Client) CastPtrToRef(dataVal reflect.Value) interface{} {
 		return nil
 	}
 
+	dataVal = unboxIfNeeded(dataVal)
+
 	// In case we got a time.Time value (or pointer to one).
 	if wireDate, isDate := castPtrToDate(dataVal); isDate {
 		return wireDate
 	}
+
+	c.Types().EnsureLoaded(dataVal.Type())
 
 	switch dataVal.Kind() {
 	case reflect.Map:
 		result := api.WireMap{MapData: make(map[string]interface{})}
 
 		iter := dataVal.MapRange()
+		allowNil := allowsNilValue(dataVal.Type().Elem())
 		for iter.Next() {
-			key := iter.Key().String()
 			val := iter.Value()
+			key := iter.Key().String()
+			if !allowNil && isNil(val) {
+				panic(fmt.Errorf("Found nil value for key %s in map of %s", key, dataVal.Type().Elem().String()))
+			}
 			result.MapData[key] = c.CastPtrToRef(val)
 		}
 
@@ -160,30 +193,21 @@ func (c *Client) CastPtrToRef(dataVal reflect.Value) interface{} {
 			return api.ObjectRef{InstanceID: valref}
 		}
 
+		pointee := dataVal.Elem()
+		// Pointee might be a pointer again, if dataVal was an interface such as Option[T]... So we
+		// dereference a second time to get to the actual value.
+		if pointee.Kind() == reflect.Ptr && !pointee.IsNil() {
+			pointee = pointee.Elem()
+		}
+
 		// In case we got a pointer to a map, slice, enum, ...
-		if elem := reflect.Indirect(dataVal.Elem()); elem.Kind() != reflect.Struct {
+		if elem := reflect.Indirect(pointee); elem.Kind() != reflect.Struct {
 			return c.CastPtrToRef(elem)
 		}
 
-		if dataVal.Elem().Kind() == reflect.Struct {
-			elemVal := dataVal.Elem()
-			if fields, fqn, isStruct := c.Types().StructFields(elemVal.Type()); isStruct {
-				data := make(map[string]interface{})
-				for _, field := range fields {
-					fieldVal := elemVal.FieldByIndex(field.Index)
-					if (fieldVal.Kind() == reflect.Ptr || fieldVal.Kind() == reflect.Interface) && fieldVal.IsNil() {
-						continue
-					}
-					key := field.Tag.Get("json")
-					data[key] = c.CastPtrToRef(fieldVal)
-				}
-
-				return api.WireStruct{
-					StructDescriptor: api.StructDescriptor{
-						FQN:    fqn,
-						Fields: data,
-					},
-				}
+		if pointee.Kind() == reflect.Struct {
+			if _, _, isStruct := c.Types().StructFields(pointee.Type()); isStruct {
+				return c.CastPtrToRef(pointee)
 			}
 		}
 
@@ -193,10 +217,40 @@ func (c *Client) CastPtrToRef(dataVal reflect.Value) interface{} {
 			return ref
 		}
 
+	case reflect.Struct:
+		if fields, fqn, isStruct := c.Types().StructFields(dataVal.Type()); isStruct {
+			data := make(map[string]interface{})
+			for _, field := range fields {
+				fieldVal := dataVal.FieldByIndex(field.Index)
+				if isNil(fieldVal) {
+					if !allowsNilValue(field.Type) {
+						panic(fmt.Errorf("Required field %s of struct %s has nil value", field.Name, dataVal.Type().String()))
+					}
+					continue
+				}
+				key := field.Tag.Get("json")
+				data[key] = c.CastPtrToRef(fieldVal)
+			}
+
+			return api.WireStruct{
+				StructDescriptor: api.StructDescriptor{
+					FQN:    fqn,
+					Fields: data,
+				},
+			}
+		}
+
+		panic(fmt.Sprintf("Attempted to pass value of struct %s to JavaScript, but this type is unknown", dataVal.Type().String()))
+
 	case reflect.Slice:
 		refs := make([]interface{}, dataVal.Len())
+		allowNil := allowsNilValue(dataVal.Type().Elem())
 		for i := 0; i < dataVal.Len(); i++ {
-			refs[i] = c.CastPtrToRef(dataVal.Index(i))
+			itemVal := dataVal.Index(i)
+			if !allowNil && isNil(itemVal) {
+				panic(fmt.Errorf("Found nil item at index %d in slice of %s", i, dataVal.Type().Elem().String()))
+			}
+			refs[i] = c.CastPtrToRef(itemVal)
 		}
 		return refs
 
@@ -206,6 +260,43 @@ func (c *Client) CastPtrToRef(dataVal reflect.Value) interface{} {
 		}
 	}
 	return dataVal.Interface()
+}
+
+// allowsNilValue returns true if the given type is allowed to have nil values.
+// This means it is either interface{} or an Option[T] type.
+func allowsNilValue(t reflect.Type) bool {
+	return t == reflect.TypeOf((*interface{})(nil)).Elem() || isOptionType(t)
+}
+
+// isNil determines whether the passed value is nil or not. It is safe to call
+// with values which types are not nil-able (calling reflect.Value.IsNil would
+// panic).
+func isNil(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
+// isOptionType returns true if the provided type is an instance of the
+// Option[T] interface.
+func isOptionType(t reflect.Type) bool {
+	if t.Kind() != reflect.Interface || t.NumMethod() > 1 {
+		return false
+	}
+	method := t.Method(0)
+	return method.Name == "FromOption__" && method.Type.NumIn() == 0 && method.Type.NumOut() == 1
+}
+
+// unboxIfNeeded converts the provided value to the associated raw type if it is
+// of a box type. Otherwise, this returns the unmodified value.
+func unboxIfNeeded(data reflect.Value) reflect.Value {
+	if rawType, found := boxTypes[data.Type()]; found {
+		return data.Convert(rawType)
+	}
+	return data
 }
 
 // castPtrToDate obtains an api.WireDate from the provided reflect.Value if it

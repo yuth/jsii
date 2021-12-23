@@ -5,8 +5,9 @@ import { InterfaceType } from 'jsii-reflect';
 import { SpecialDependencies } from '../dependencies';
 import { EmitContext } from '../emit-context';
 import { Package } from '../package';
-import { JSII_RT_ALIAS } from '../runtime';
+import { JSII_INIT_ALIAS, JSII_INIT_FUNC, JSII_RT_ALIAS } from '../runtime';
 import { getMemberDependencies } from '../util';
+import { emitOptionImplementation } from './_markers';
 import { GoType } from './go-type';
 import { GoProperty } from './type-member';
 
@@ -36,9 +37,9 @@ export class Struct extends GoType {
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: false,
+      api: this.properties.some((p) => p.specialDependencies.api),
       init: false,
       internal: false,
-      time: this.properties.some((prop) => prop.specialDependencies.time),
     };
   }
 
@@ -51,12 +52,14 @@ export class Struct extends GoType {
     }
     code.closeBlock();
     code.line();
+
+    emitOptionImplementation(context, this.name, this.name);
   }
 
   public emitRegistration(code: CodeMaker): void {
-    code.open(`${JSII_RT_ALIAS}.RegisterStruct(`);
+    code.open(`${JSII_RT_ALIAS}.RegisterStruct[${this.name}](`);
     code.line(`"${this.fqn}",`);
-    code.line(`reflect.TypeOf((*${this.name})(nil)).Elem(),`);
+    code.line(`${JSII_INIT_ALIAS}.${JSII_INIT_FUNC},`);
     code.close(')');
   }
 }

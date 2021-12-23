@@ -6,12 +6,12 @@ export interface SpecialDependencies {
   /** Whether the jsii runtime library for go is needed */
   readonly runtime: boolean;
 
+  /** Whether the jsii API library for go is ineeded */
+  readonly api: boolean;
+
   /** Whether the package's initialization hook is needed */
   readonly init: boolean;
 
   /** Whether the internal type aliases package is needed */
   readonly internal: boolean;
-
-  /** Whether go's standard library "time" module is needed */
-  readonly time: boolean;
 }

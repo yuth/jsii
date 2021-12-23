@@ -5,8 +5,14 @@ import * as comparators from '../comparators';
 import { SpecialDependencies } from '../dependencies';
 import { EmitContext } from '../emit-context';
 import { Package } from '../package';
-import { JSII_RT_ALIAS, MethodCall } from '../runtime';
+import {
+  JSII_INIT_ALIAS,
+  JSII_INIT_FUNC,
+  JSII_RT_ALIAS,
+  MethodCall,
+} from '../runtime';
 import { getMemberDependencies, getParamDependencies } from '../util';
+import { emitOptionImplementation } from './_markers';
 import { GoType } from './go-type';
 import { GoTypeRef } from './go-type-reference';
 import { GoMethod, GoProperty } from './type-member';
@@ -113,12 +119,14 @@ export class GoInterface extends GoType {
         prop.emitSetterProxy(context);
       }
     }
+
+    emitOptionImplementation(context, this.proxyName, this.name);
   }
 
   public emitRegistration(code: CodeMaker): void {
-    code.open(`${JSII_RT_ALIAS}.RegisterInterface(`);
+    code.open(`${JSII_RT_ALIAS}.RegisterInterface[${this.name}](`);
     code.line(`"${this.fqn}",`);
-    code.line(`reflect.TypeOf((*${this.name})(nil)).Elem(),`);
+    code.line(`${JSII_INIT_ALIAS}.${JSII_INIT_FUNC},`);
 
     const allMembers = [
       ...this.type.allMethods
@@ -149,15 +157,15 @@ export class GoInterface extends GoType {
     ].reduce(
       (acc, elt) => ({
         runtime: acc.runtime || elt.runtime,
+        api: acc.api || elt.api,
         init: acc.init || elt.init,
         internal: acc.internal,
-        time: acc.time || elt.time,
       }),
       {
         runtime: false,
+        api: false,
         init: false,
         internal: this.extends.some((base) => this.pkg.isExternalType(base)),
-        time: false,
       },
     );
   }
@@ -191,8 +199,6 @@ export class GoInterface extends GoType {
 }
 
 class InterfaceProperty extends GoProperty {
-  public readonly reference?: GoTypeRef;
-
   public constructor(
     public readonly parent: GoInterface,
     public readonly property: Property,
@@ -201,10 +207,7 @@ class InterfaceProperty extends GoProperty {
   }
 
   public get returnType(): string {
-    return (
-      this.reference?.scopedReference(this.parent.pkg) ??
-      this.property.type.toString()
-    );
+    return this.reference.scopedReference(this.parent.pkg);
   }
 
   public emit({ code, documenter }: EmitContext) {
@@ -257,11 +260,12 @@ class InterfaceMethod extends GoMethod {
   public get specialDependencies(): SpecialDependencies {
     return {
       runtime: true,
+      api:
+        this.parameters.some(
+          (p) => p.parameter.optional || p.reference.specialDependencies.api,
+        ) || !!this.reference?.specialDependencies.api,
       init: false,
       internal: false,
-      time:
-        this.parameters.some((p) => p.reference.specialDependencies.time) ||
-        !!this.reference?.specialDependencies.time,
     };
   }
 

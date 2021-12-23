@@ -8,12 +8,13 @@ import { SpecialDependencies } from './dependencies';
 import { EmitContext } from './emit-context';
 import { ReadmeFile } from './readme-file';
 import {
+  JSII_API_ALIAS,
+  JSII_INIT_ALIAS,
+  JSII_INIT_FUNC,
+  JSII_INIT_PACKAGE,
   JSII_RT_ALIAS,
   JSII_RT_MODULE_NAME,
   JSII_RT_PACKAGE_NAME,
-  JSII_INIT_PACKAGE,
-  JSII_INIT_FUNC,
-  JSII_INIT_ALIAS,
 } from './runtime';
 import { GoClass, GoType, Enum, GoInterface, Struct, GoTypeRef } from './types';
 import {
@@ -25,7 +26,7 @@ import {
 import { VersionFile } from './version-file';
 
 export const GOMOD_FILENAME = 'go.mod';
-export const GO_VERSION = '1.16';
+export const GO_VERSION = '1.18';
 
 // the name of a sub-package that includes internal type aliases it has to be
 // "internal" so it not published.
@@ -190,11 +191,16 @@ export abstract class Package {
       .reduce(
         (acc, elt) => ({
           runtime: acc.runtime || elt.runtime,
+          api: acc.api || elt.api,
           init: acc.init || elt.init,
           internal: acc.internal || elt.internal,
-          time: acc.time || elt.time,
         }),
-        { runtime: false, init: false, internal: false, time: false },
+        {
+          runtime: false,
+          api: false,
+          init: false,
+          internal: false,
+        },
       );
   }
 
@@ -217,7 +223,25 @@ export abstract class Package {
       code.openFile(initFile);
       code.line(`package ${this.packageName}`);
       code.line();
-      importGoModules(code, [GO_REFLECT, JSII_RT_MODULE]);
+      // For enums, interfaces and structs, we register a hook to _init_.Initialize, so the runtime
+      // can ensure the relevant package is loaded in the runtime before trying to send instances
+      // over the wire. This is required as such instances aren't necessarily built from a
+      // constructor and can originate from Go side.
+      const initPackage = this.types.some(
+        (t) =>
+          t.type.isDataType() ||
+          t.type.isEnumType() ||
+          t.type.isInterfaceType(),
+      )
+        ? {
+            module: `${this.root.goModuleName}/${JSII_INIT_PACKAGE}`,
+            alias: JSII_INIT_ALIAS,
+          }
+        : undefined;
+      importGoModules(code, [
+        JSII_RT_MODULE,
+        ...((initPackage && [initPackage]) ?? []),
+      ]);
       code.line();
       code.openBlock('func init()');
       for (const type of this.types) {
@@ -233,8 +257,8 @@ export abstract class Package {
 
     const specialDeps = this.specialDependencies;
 
-    if (specialDeps.time) {
-      toImport.push({ module: 'time' });
+    if (specialDeps.api) {
+      toImport.push(JSII_API_MODULE);
     }
 
     if (specialDeps.runtime) {
@@ -560,7 +584,10 @@ const JSII_RT_MODULE: ImportedModule = {
   alias: JSII_RT_ALIAS,
   module: JSII_RT_PACKAGE_NAME,
 };
-const GO_REFLECT: ImportedModule = { module: 'reflect' };
+const JSII_API_MODULE: ImportedModule = {
+  alias: JSII_API_ALIAS,
+  module: JSII_RT_MODULE_NAME,
+};
 
 function importGoModules(code: CodeMaker, modules: readonly ImportedModule[]) {
   if (modules.length === 0) {
@@ -625,7 +652,11 @@ function importGoModules(code: CodeMaker, modules: readonly ImportedModule[]) {
   }
 
   function isSpecial(mod: ImportedModule): boolean {
-    return mod.alias === JSII_RT_ALIAS || mod.alias === JSII_INIT_ALIAS;
+    return (
+      mod.alias === JSII_RT_ALIAS ||
+      mod.alias === JSII_INIT_ALIAS ||
+      mod.alias === JSII_API_ALIAS
+    );
   }
 }
 

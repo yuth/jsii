@@ -13,7 +13,7 @@ func NewWallClock(nowAsISO string) *WallClock {
 	return &WallClock{nowAsISO}
 }
 
-func (w *WallClock) Iso8601Now() *string {
+func (w *WallClock) Iso8601Now() jsii.String {
 	return jsii.String(w.nowAsISO)
 }
 
@@ -27,6 +27,6 @@ func NewEntropy(clock jsiicalc.IWallClock) *Entropy {
 	return e
 }
 
-func (e *Entropy) Repeat(word *string) *string {
+func (e *Entropy) Repeat(word jsii.String) jsii.String {
 	return word
 }

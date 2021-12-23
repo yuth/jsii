@@ -81,4 +81,18 @@ stdin.pipe(commands);
 // Forwarding responses from the child's FD#3 to this process' STDOUT
 commands.pipe(stdout);
 
+// Install error handlers on the pipes. If this isn't done, any error will
+// result in this process aborting. We can expect to receive `EPIPE` errors when
+// the parent process terminates early (i.e: it gets killed, decides to
+// terminate the jsii runtime process abruptly, etc...).
+commands.on('error', (cause) =>
+  error(`[${__filename}] Command channel error: ${cause.stack ?? cause.message}`),
+);
+stdin.on('error', (cause) =>
+  error(`[${__filename}] STDIN error: ${cause.stack ?? cause.message}`),
+);
+stdout.on('error', (cause) =>
+  error(`[${__filename}] STDOUT error: ${cause.stack ?? cause.message}`),
+);
+
 //#endregion

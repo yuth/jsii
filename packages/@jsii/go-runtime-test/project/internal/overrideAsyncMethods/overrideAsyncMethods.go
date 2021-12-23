@@ -15,11 +15,11 @@ func New() *OverrideAsyncMethods {
 	return o
 }
 
-func (o *OverrideAsyncMethods) OverrideMe(*float64) *float64 {
-	return jsii.Number(*o.Foo() * 2)
+func (o *OverrideAsyncMethods) OverrideMe(jsii.Number) jsii.Number {
+	return jsii.Number(o.Foo() * 2)
 }
 
-func (o *OverrideAsyncMethods) Foo() *float64 {
+func (o *OverrideAsyncMethods) Foo() jsii.Number {
 	return jsii.Number(222)
 }
 

@@ -55,7 +55,7 @@ func (t *TypeRegistry) RegisterClass(fqn api.FQN, class reflect.Type, overrides 
 // provided members map (jsii member name => go value). This returns an error
 // if the provided enum is not a string derivative, or of any of the provided
 // member values has a type other than enm.
-func (t *TypeRegistry) RegisterEnum(fqn api.FQN, enm reflect.Type, members map[string]interface{}) error {
+func (t *TypeRegistry) RegisterEnum(fqn api.FQN, enm reflect.Type, loader func(), members map[string]interface{}) error {
 	if enm.Kind() != reflect.String {
 		return fmt.Errorf("the provided enum is not a string derivative: %v", enm)
 	}
@@ -81,13 +81,15 @@ func (t *TypeRegistry) RegisterEnum(fqn api.FQN, enm reflect.Type, members map[s
 		t.fqnToEnumMember[memberFQN] = memberVal
 	}
 
+	t.loaders[enm] = loader
+
 	return nil
 }
 
 // RegisterInterface maps the given FQN to the provided interface type, list of
 // overrides, and proxy maker function. Returns an error if the provided interface
 // is not a go interface.
-func (t *TypeRegistry) RegisterInterface(fqn api.FQN, iface reflect.Type, overrides []api.Override, maker func() interface{}) error {
+func (t *TypeRegistry) RegisterInterface(fqn api.FQN, iface reflect.Type, loader func(), overrides []api.Override, maker func() interface{}) error {
 	if iface.Kind() != reflect.Interface {
 		return fmt.Errorf("the provided interface is not an interface: %v", iface)
 	}
@@ -105,13 +107,15 @@ func (t *TypeRegistry) RegisterInterface(fqn api.FQN, iface reflect.Type, overri
 		copy(t.typeMembers[fqn], overrides)
 	}
 
+	t.loaders[iface] = loader
+
 	return nil
 }
 
 // RegisterStruct maps the given FQN to the provided struct type, and struct
 // interface. Returns an error if the provided struct type is not a go struct,
 // or the provided iface not a go interface.
-func (t *TypeRegistry) RegisterStruct(fqn api.FQN, strct reflect.Type) error {
+func (t *TypeRegistry) RegisterStruct(fqn api.FQN, strct reflect.Type, loader func()) error {
 	if strct.Kind() != reflect.Struct {
 		return fmt.Errorf("the provided struct is not a struct: %v", strct)
 	}
@@ -142,6 +146,7 @@ func (t *TypeRegistry) RegisterStruct(fqn api.FQN, strct reflect.Type) error {
 
 	t.fqnToType[fqn] = registeredType{strct, structType}
 	t.structInfo[strct] = registeredStruct{FQN: fqn, Fields: fields}
+	t.loaders[strct] = loader
 
 	return nil
 }

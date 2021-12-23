@@ -169,7 +169,7 @@ func (p *Process) ensureStarted() error {
 	go func() {
 		err := p.cmd.Wait()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Runtime process exited abnormally: %s", err.Error())
+			fmt.Fprintf(os.Stderr, "Runtime process exited abnormally: %s\n", err.Error())
 		}
 		p.Close()
 	}()
@@ -224,6 +224,12 @@ func (p *Process) Close() {
 		p.stdin = nil
 	}
 
+	if p.cmd != nil {
+		// Wait for the child process to be dead and gone (should happen quickly)
+		p.cmd.Wait()
+		p.cmd = nil
+	}
+
 	if p.stdout != nil {
 		// Close STDOUT for the child process now, as we don't expect to receive
 		// responses anymore. Ignoring errors, as it may have been closed
@@ -247,7 +253,7 @@ func (p *Process) Close() {
 	}
 
 	if p.cmd != nil {
-		// Wait for the child process to be dead and gone (should already be)
+		// Wait for the child process to be dead and gone (should happen quickly)
 		p.cmd.Wait()
 		p.cmd = nil
 	}

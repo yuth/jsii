@@ -22,6 +22,13 @@ type TypeRegistry struct {
 	// the corresponding go const for this member.
 	fqnToEnumMember map[string]interface{}
 
+	// loaders provides a handle to the module's Initialize function, so runtime
+	// can ensure the relevant JavaScript packages have been loaded before trying
+	// to send their types over the wire. This only contains references for types
+	// that can be used without going through a constructor-like function: enums,
+	// interfaces, and structs.
+	loaders map[reflect.Type]func()
+
 	// typeToEnumFQN maps Go enum type ("StringEnum") to the corresponding jsii
 	// enum FQN (e.g. "jsii-calc.StringEnum")
 	typeToEnumFQN map[reflect.Type]api.FQN
@@ -42,10 +49,21 @@ func New() *TypeRegistry {
 	return &TypeRegistry{
 		fqnToType:       make(map[api.FQN]registeredType),
 		fqnToEnumMember: make(map[string]interface{}),
+		loaders:         make(map[reflect.Type]func()),
 		typeToEnumFQN:   make(map[reflect.Type]api.FQN),
 		structInfo:      make(map[reflect.Type]registeredStruct),
 		proxyMakers:     make(map[reflect.Type]func() interface{}),
 		typeMembers:     make(map[api.FQN][]api.Override),
+	}
+}
+
+// Ensures the JavaScript module for the provided type has been loaded.
+func (t *TypeRegistry) EnsureLoaded(typ reflect.Type) {
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+	if loader, ok := t.loaders[typ]; ok {
+		loader()
 	}
 }
 
